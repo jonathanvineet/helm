@@ -5,32 +5,31 @@ import os
 
 private let log = Logger(subsystem: "com.jonathanvineet.helm.saver", category: "saver")
 
-/// Helm as a real screensaver: a Ken Burns photo slideshow with the cockpit
-/// drawn on top. macOS 26 keeps its screensaver above every app window, so
+/// Helm as a real screensaver: a Ken Burns photo slideshow with your notes and
+/// reminders on top. macOS 26 keeps its screensaver above every app window, so
 /// being the screensaver is the only way to overlay one.
 @objc(HelmSaverView)
 final class HelmSaverView: ScreenSaverView {
-    private let telemetry: Telemetry
     private let playback: Playback
+    private let store: BoardStore
     /// legacyScreenSaver creates new views mid-screensaver without removing old
     /// ones. Only the newest draws.
     private static weak var current: HelmSaverView?
+    /// When this view last started drawing.
+    private var runningSince = Date()
 
     override init?(frame: NSRect, isPreview: Bool) {
         let session = isPreview ? SaverSession(start: Date(), seed: 1) : SaverSession.resume()
-        telemetry = MainActor.assumeIsolated { Telemetry() }
         playback = MainActor.assumeIsolated { Playback() }
+        store = MainActor.assumeIsolated { BoardStore() }
         super.init(frame: frame, isPreview: isPreview)
         animationTimeInterval = 1.0 / 30.0
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
 
         MainActor.assumeIsolated {
-            telemetry.start()
             Slideshow.seed = session.seed
-            let root = SaverRoot(start: session.start, preview: isPreview,
-                                 topInset: isPreview ? 0 : NSScreen.main?.safeAreaInsets.top ?? 0,
-                                 telemetry: telemetry, slides: Slideshow.shared, playback: playback)
+            let root = SaverRoot(start: session.start, slides: Slideshow.shared, playback: playback, store: store)
             let host = NSHostingView(rootView: root)
             host.frame = bounds
             host.autoresizingMask = [.width, .height]
@@ -60,8 +59,8 @@ final class HelmSaverView: ScreenSaverView {
     }
 
     required init?(coder: NSCoder) {
-        telemetry = MainActor.assumeIsolated { Telemetry() }
         playback = MainActor.assumeIsolated { Playback() }
+        store = MainActor.assumeIsolated { BoardStore() }
         super.init(coder: coder)
     }
 
@@ -78,24 +77,22 @@ final class HelmSaverView: ScreenSaverView {
 
     override func animateOneFrame() {}
 
-    @objc private func screensaverStopped(_ note: Notification) {
-        setRunning(false, reason: note.name.rawValue)
-    }
-
-    /// When this view last started drawing.
-    private var runningSince = Date()
-
     /// The screensaver ends on user input, and macOS doesn't reliably tell a
     /// sandboxed saver that it stopped. So any keyboard/mouse input after we
     /// started drawing means the screensaver is over.
     private func tick() {
         guard playback.running else { return }
         SaverSession.heartbeat()
+        store.refreshIfChanged()
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
         let drawing = Date().timeIntervalSince(runningSince)
         if drawing > 2, idle + 1 < drawing {
             setRunning(false, reason: String(format: "input %.1fs ago, drawing for %.1fs", idle, drawing))
         }
+    }
+
+    @objc private func screensaverStopped(_ note: Notification) {
+        setRunning(false, reason: note.name.rawValue)
     }
 
     @objc private func screensaverStarted(_ note: Notification) {
@@ -107,8 +104,10 @@ final class HelmSaverView: ScreenSaverView {
         guard running != playback.running else { return }
         log.notice("view \(ObjectIdentifier(self).hashValue % 10000) \(running ? "resume" : "pause", privacy: .public) (\(reason, privacy: .public))")
         playback.running = running
-        if running { runningSince = Date() }
-        running ? telemetry.start() : telemetry.stop()
+        if running {
+            runningSince = Date()
+            store.refreshIfChanged()
+        }
     }
 }
 
@@ -116,6 +115,27 @@ final class HelmSaverView: ScreenSaverView {
 @MainActor
 final class Playback: ObservableObject {
     @Published var running = true
+}
+
+/// board.json as written by Helm Sync, reloaded when the file changes.
+@MainActor
+final class BoardStore: ObservableObject {
+    @Published private(set) var board: Board?
+    private var loadedStamp: Date?
+
+    init() { refreshIfChanged() }
+
+    func refreshIfChanged() {
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: Board.fileURL.path))?[.modificationDate] as? Date
+        guard stamp != loadedStamp else { return }
+        loadedStamp = stamp
+        board = Board.load()
+        if let board {
+            log.notice("board loaded: \(board.notes.count) notes, \(board.todo.count) to do, \(board.done.count) done")
+        } else {
+            log.error("board not readable at \(Board.fileURL.path, privacy: .public)")
+        }
+    }
 }
 
 /// Survives the host process being relaunched mid-screensaver, so the cockpit
@@ -151,42 +171,24 @@ struct SaverSession {
 
 struct SaverRoot: View {
     let start: Date
-    let preview: Bool
-    let topInset: CGFloat
-    @ObservedObject var telemetry: Telemetry
     @ObservedObject var slides: Slideshow
     @ObservedObject var playback: Playback
+    @ObservedObject var store: BoardStore
 
     var body: some View {
         if playback.running {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let t = timeline.date.timeIntervalSince(start)
-                let tel = telemetry.snapshot
                 GeometryReader { geo in
                     ZStack {
                         KenBurns(slides: slides, t: t, size: geo.size)
-                        cockpit(t: t, now: timeline.date, tel: tel, size: geo.size)
+                        BoardView(board: store.board, t: t, now: timeline.date, size: geo.size)
                     }
                 }
             }
             .ignoresSafeArea()
         } else {
             Color.black.ignoresSafeArea()
-        }
-    }
-
-    /// The cockpit is laid out for a laptop-sized screen; the System Settings
-    /// thumbnail gets the same layout scaled down.
-    @ViewBuilder
-    private func cockpit(t: Double, now: Date, tel: TelemetrySnapshot, size: CGSize) -> some View {
-        let flight = FlightState(time: now.timeIntervalSinceReferenceDate, turbulence: tel.cpu)
-        if preview || size.width < 900 {
-            let virtual = CGSize(width: 1470, height: 1470 * size.height / max(size.width, 1))
-            CockpitScene(t: t, now: now, flight: flight, tel: tel, size: virtual, topInset: 0)
-                .scaleEffect(size.width / virtual.width)
-                .frame(width: size.width, height: size.height)
-        } else {
-            CockpitScene(t: t, now: now, flight: flight, tel: tel, size: size, topInset: topInset)
         }
     }
 }
