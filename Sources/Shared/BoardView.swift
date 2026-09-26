@@ -1,15 +1,12 @@
 import SwiftUI
 
-/// Notes and reminders drawn over the slideshow. `t` is seconds since the
-/// screensaver started; notes rotate every `notePeriod` seconds.
+/// Notes and reminders drawn over the slideshow: every note in the Helm folder
+/// tiled as a card, reminders alongside. `t` is seconds since the screensaver started.
 struct BoardView: View {
     let board: Board?
     let t: Double
     let now: Date
     let size: CGSize
-
-    static let notePeriod = 20.0
-    static let noteFade = 0.8
 
     var body: some View {
         let W = size.width, H = size.height
@@ -28,8 +25,8 @@ struct BoardView: View {
             VStack(alignment: .leading, spacing: base * 1.6) {
                 header(base: base)
                 HStack(alignment: .top, spacing: pad * 0.6) {
-                    notePanel(base: base)
-                        .frame(width: (W - pad * 2.6) * 0.6, alignment: .topLeading)
+                    notesGrid(base: base)
+                        .frame(width: (W - pad * 2.6) * 0.64, alignment: .topLeading)
                     tasksPanel(base: base)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -45,84 +42,113 @@ struct BoardView: View {
         .frame(width: W, height: H)
     }
 
-    // MARK: Header: the note's heading, with the clock on the right.
+    // MARK: Header
 
     private var notes: [BoardNote] { board?.notes ?? [] }
-    private var noteIndex: Int { notes.isEmpty ? 0 : Int(t / Self.notePeriod) % notes.count }
-    private var current: BoardNote? { notes.isEmpty ? nil : notes[noteIndex] }
-
-    /// Crossfade between notes at the rotation boundary.
-    private var noteOpacity: Double {
-        guard notes.count > 1 else { return 1 }
-        let local = t.truncatingRemainder(dividingBy: Self.notePeriod)
-        return min(1, local / Self.noteFade, (Self.notePeriod - local) / Self.noteFade)
-    }
 
     private func header(base: CGFloat) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .lastTextBaseline) {
             VStack(alignment: .leading, spacing: base * 0.3) {
-                Text(notes.count > 1 ? "NOTES · \(noteIndex + 1) OF \(notes.count)" : "NOTES")
+                Text(notes.isEmpty ? "NOTES" : "NOTES · \(notes.count)")
                     .font(.system(size: base * 0.8, weight: .semibold))
                     .tracking(base * 0.12)
                     .foregroundStyle(.white.opacity(0.6))
-                Text(current?.title ?? (board == nil ? "Waiting for Helm Sync" : "Add a note to the Helm folder"))
-                    .font(.system(size: base * 3.4, weight: .bold))
+                Text(now, format: .dateTime.weekday(.wide).day().month(.wide))
+                    .font(.system(size: base * 2.4, weight: .bold))
                     .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.6)
-                    .opacity(noteOpacity)
             }
             Spacer(minLength: base * 2)
-            VStack(alignment: .trailing, spacing: base * 0.2) {
-                Text(now, format: .dateTime.hour().minute())
-                    .font(.system(size: base * 3.4, weight: .light))
-                    .monospacedDigit()
-                Text(now, format: .dateTime.weekday(.wide).day().month(.wide))
-                    .font(.system(size: base * 1.05, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
-            }
-            .foregroundStyle(.white)
+            Text(now, format: .dateTime.hour().minute())
+                .font(.system(size: base * 3.4, weight: .light))
+                .monospacedDigit()
+                .foregroundStyle(.white)
         }
         .shadow(color: .black.opacity(0.5), radius: base * 0.6)
     }
 
-    // MARK: The note's text.
+    // MARK: Notes, tiled
 
-    private func notePanel(base: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: base * 0.45) {
-            if let note = current {
-                ForEach(Array(note.lines.prefix(maxLines(base: base)).enumerated()), id: \.offset) { _, line in
-                    if line.isEmpty {
-                        Color.clear.frame(height: base * 0.4)
-                    } else {
-                        Text(line)
-                            .font(.system(size: base * 1.25))
-                            .foregroundStyle(.white.opacity(0.92))
-                            .lineLimit(2)
+    private func notesGrid(base: CGFloat) -> some View {
+        GeometryReader { geo in
+            let n = notes.count
+            let cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4
+            let rows = max(1, Int(ceil(Double(n) / Double(cols))))
+            let gap = base * 0.9
+            let cardW = (geo.size.width - gap * CGFloat(cols - 1)) / CGFloat(cols)
+            let cardH = (geo.size.height - gap * CGFloat(rows - 1)) / CGFloat(rows)
+            // Shrink type as the grid gets denser, within readable limits.
+            let scale = min(1, max(0.62, min(cardW / (base * 22), cardH / (base * 11))))
+            if n == 0 {
+                emptyNotes(base: base)
+            } else {
+                VStack(spacing: gap) {
+                    ForEach(0..<rows, id: \.self) { r in
+                        HStack(spacing: gap) {
+                            ForEach(0..<cols, id: \.self) { c in
+                                let i = r * cols + c
+                                if i < n {
+                                    noteCard(notes[i], base: base * scale, height: cardH)
+                                        .frame(width: cardW, height: cardH)
+                                } else {
+                                    Color.clear.frame(width: cardW, height: cardH)
+                                }
+                            }
+                        }
                     }
                 }
-                if note.lines.count > maxLines(base: base) {
-                    Text("…").font(.system(size: base * 1.25)).foregroundStyle(.white.opacity(0.6))
-                }
-                Spacer(minLength: 0)
-                Text("Edited \(note.modified, format: .relative(presentation: .named))")
-                    .font(.system(size: base * 0.85))
-                    .foregroundStyle(.white.opacity(0.5))
-            } else {
-                Text(board?.notesError ?? "Notes you put in the Helm folder in the Notes app show up here. The first line becomes the heading.")
-                    .font(.system(size: base * 1.2))
-                    .foregroundStyle(.white.opacity(0.8))
-                Spacer(minLength: 0)
             }
         }
-        .opacity(noteOpacity)
-        .padding(base * 1.4)
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func noteCard(_ note: BoardNote, base: CGFloat, height: CGFloat) -> some View {
+        let lineH = base * 1.2 * 1.45
+        let fits = max(0, Int((height - base * 1.2 * 2 - base * 2.6 - base * 1.6) / lineH) - 1)
+        let shown = Array(note.lines.prefix(fits))
+        return VStack(alignment: .leading, spacing: base * 0.35) {
+            Text(note.title)
+                .font(.system(size: base * 1.9, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+                .padding(.bottom, base * 0.2)
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, line in
+                if line.isEmpty {
+                    Color.clear.frame(height: base * 0.35)
+                } else {
+                    Text(line)
+                        .font(.system(size: base * 1.2))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                }
+            }
+            if note.lines.count > shown.count {
+                Text("…").font(.system(size: base * 1.2)).foregroundStyle(.white.opacity(0.55))
+            }
+            Spacer(minLength: 0)
+            Text("Edited \(note.modified, format: .relative(presentation: .named))")
+                .font(.system(size: base * 0.8))
+                .foregroundStyle(.white.opacity(0.5))
+        }
+        .padding(base * 1.2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(panel(base: base))
     }
 
-    private func maxLines(base: CGFloat) -> Int {
-        max(3, Int((size.height * 0.5) / (base * 2.05)))
+    private func emptyNotes(base: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: base * 0.6) {
+            Text(board == nil ? "Waiting for Helm Sync" : "No notes yet")
+                .font(.system(size: base * 1.9, weight: .bold))
+                .foregroundStyle(.white)
+            Text(board?.notesError ?? "Notes you put in the Helm folder in the Notes app show up here, one card each. The first line becomes the heading.")
+                .font(.system(size: base * 1.2))
+                .foregroundStyle(.white.opacity(0.8))
+            Spacer(minLength: 0)
+        }
+        .padding(base * 1.4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(panel(base: base))
     }
 
     // MARK: Reminders: what's left, and what got done today.

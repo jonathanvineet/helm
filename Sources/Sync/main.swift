@@ -53,7 +53,7 @@ func fetchNotes() throws -> [BoardNote] {
     }
     return try decoder.decode([RawNote].self, from: data)
         .sorted { $0.modified > $1.modified }
-        .prefix(8)
+        .prefix(24)
         .map { raw in
             var lines = raw.text.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }
             if lines.first == raw.title.trimmingCharacters(in: .whitespaces) { lines.removeFirst() }
