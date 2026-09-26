@@ -19,8 +19,10 @@ final class Slideshow: ObservableObject {
             let items = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
             return items.filter { exts.contains($0.pathExtension.lowercased()) }
         }
-        var found: [URL] = []
-        if let folder = Self.chosenFolder() { found = list(folder) }
+        // Photos Helm.app copied into the sandbox, else the system slideshow's
+        // folder (if the sandbox lets us read it), else the copy in the bundle.
+        var found = list(Board.photosURL)
+        if found.isEmpty, let folder = Self.chosenFolder() { found = list(folder) }
         if found.isEmpty, let bundled = Bundle(for: HelmSaverView.self).url(forResource: "Photos", withExtension: nil) {
             found = list(bundled)
         }

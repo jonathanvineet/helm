@@ -181,7 +181,13 @@ struct SaverRoot: View {
                 let t = timeline.date.timeIntervalSince(start)
                 GeometryReader { geo in
                     ZStack {
-                        KenBurns(slides: slides, t: t, size: geo.size)
+                        let settings = store.board?.settings ?? HelmSettings()
+                        if settings.showPhotos {
+                            KenBurns(slides: slides, t: t, size: geo.size,
+                                     hold: max(3, settings.photoDuration), zoom: settings.zoomAmount)
+                        } else {
+                            Color.black
+                        }
                         BoardView(board: store.board, t: t, now: timeline.date, size: geo.size)
                     }
                 }
@@ -198,18 +204,19 @@ struct KenBurns: View {
     @ObservedObject var slides: Slideshow
     let t: Double
     let size: CGSize
+    var hold = 12.0
+    var zoom = 1.0
 
-    static let hold = 12.0
-    static let fade = 2.0
+    private var fade: Double { min(2, hold / 4) }
 
     var body: some View {
-        let k = Int(t / Self.hold)
-        let local = t - Double(k) * Self.hold
+        let k = Int(t / hold)
+        let local = t - Double(k) * hold
         ZStack {
             Color.black
             layer(k)
-            if local > Self.hold - Self.fade {
-                layer(k + 1).opacity((local - (Self.hold - Self.fade)) / Self.fade)
+            if local > hold - fade {
+                layer(k + 1).opacity((local - (hold - fade)) / fade)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -220,11 +227,11 @@ struct KenBurns: View {
     private func layer(_ k: Int) -> some View {
         if let image = slides.image(k) {
             // Each slide moves across its full on-screen life (hold + fade).
-            let p = min(1, max(0, (t - Double(k) * Self.hold + Self.fade) / (Self.hold + Self.fade)))
+            let p = min(1, max(0, (t - Double(k) * hold + fade) / (hold + fade)))
             var rng = SeededRandom(seed: UInt64(truncatingIfNeeded: k &* 2_654_435_761 &+ 1))
             let zoomIn = rng.next() > 0.5
-            let s0 = 1.04 + rng.next() * 0.06, s1 = 1.14 + rng.next() * 0.08
-            let dx = (rng.next() - 0.5) * 0.08, dy = (rng.next() - 0.5) * 0.06
+            let s0 = 1 + (0.04 + rng.next() * 0.06) * zoom, s1 = 1 + (0.14 + rng.next() * 0.08) * zoom
+            let dx = (rng.next() - 0.5) * 0.08 * zoom, dy = (rng.next() - 0.5) * 0.06 * zoom
             let scale = zoomIn ? s0 + (s1 - s0) * p : s1 - (s1 - s0) * p
             Image(nsImage: image)
                 .resizable()
