@@ -14,16 +14,14 @@ MainActor.assumeIsolated {
     let photo = args.count > 3 ? NSImage(contentsOfFile: args[3]) : nil
     let size = CGSize(width: 1470, height: 956)
 
-    let scene = ZStack {
+    let scene = GlassStage(board: Board.load(), t: t, now: Date(), size: size) {
         if let photo {
             Image(nsImage: photo).resizable().aspectRatio(contentMode: .fill)
                 .frame(width: size.width, height: size.height).clipped()
         } else {
             LinearGradient(colors: [.purple, .blue, .teal, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
-        BoardView(board: Board.load(), t: t, now: Date(), size: size)
     }
-    .frame(width: size.width, height: size.height)
 
     let renderer = ImageRenderer(content: scene)
     renderer.scale = 2

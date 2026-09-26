@@ -180,15 +180,14 @@ struct SaverRoot: View {
             TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                 let t = timeline.date.timeIntervalSince(start)
                 GeometryReader { geo in
-                    ZStack {
-                        let settings = store.board?.settings ?? HelmSettings()
+                    let settings = store.board?.settings ?? HelmSettings()
+                    GlassStage(board: store.board, t: t, now: timeline.date, size: geo.size) {
                         if settings.showPhotos {
                             KenBurns(slides: slides, t: t, size: geo.size,
                                      hold: max(3, settings.photoDuration), zoom: settings.zoomAmount)
                         } else {
                             Color.black
                         }
-                        BoardView(board: store.board, t: t, now: timeline.date, size: geo.size)
                     }
                 }
             }

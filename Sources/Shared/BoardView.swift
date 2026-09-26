@@ -170,7 +170,8 @@ struct BoardView: View {
                         .monospacedDigit()
                         .padding(.horizontal, base * 0.5)
                         .padding(.vertical, base * 0.15)
-                        .background(Capsule().fill(doneCount == checks.count ? accent.opacity(0.9) : .white.opacity(0.15)))
+                        .background(Capsule().fill(doneCount == checks.count ? accent.opacity(0.85) : .white.opacity(0.18)))
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8))
                         .foregroundStyle(.white)
                 }
             }
@@ -188,7 +189,7 @@ struct BoardView: View {
         }
         .padding(base * 1.2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(panel(base: base))
+        .glass(radius: base * 1.1, tint: s.panelOpacity)
     }
 
     /// Running numbers for consecutive numbered-list lines.
@@ -251,7 +252,7 @@ struct BoardView: View {
         }
         .padding(base * 1.4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(panel(base: base))
+        .glass(radius: base * 1.1, tint: s.panelOpacity)
     }
 
     // MARK: Reminders: what's left, and what got done today.
@@ -276,8 +277,9 @@ struct BoardView: View {
             if total > 0 && s.showDoneToday {
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.15))
-                        Capsule().fill(accent.opacity(0.9))
+                        Capsule().fill(.white.opacity(0.18))
+                        Capsule().fill(LinearGradient(colors: [accent.opacity(0.95), accent.opacity(0.7)], startPoint: .leading, endPoint: .trailing))
+                            .shadow(color: accent.opacity(0.6), radius: base * 0.4)
                             .frame(width: g.size.width * CGFloat(done.count) / CGFloat(total))
                     }
                 }
@@ -310,7 +312,7 @@ struct BoardView: View {
         }
         .padding(base * 1.4)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(panel(base: base))
+        .glass(radius: base * 1.1, tint: s.panelOpacity)
     }
 
     private func taskRow(_ task: BoardTask, done: Bool, base: CGFloat) -> some View {
@@ -365,11 +367,6 @@ struct BoardView: View {
         .foregroundStyle(.white.opacity(0.5))
     }
 
-    private func panel(base: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: base * 1.1, style: .continuous)
-            .fill(Color.black.opacity(s.panelOpacity))
-            .overlay(RoundedRectangle(cornerRadius: base * 1.1, style: .continuous).stroke(.white.opacity(0.1)))
-    }
 }
 
 extension Color {
@@ -378,5 +375,82 @@ extension Color {
         if h.hasPrefix("#") { h.removeFirst() }
         guard h.count == 6, let v = UInt32(h, radix: 16) else { return nil }
         self.init(red: Double((v >> 16) & 0xFF) / 255, green: Double((v >> 8) & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+    }
+}
+
+// MARK: - Glass
+
+/// A panel's frame, reported up so the stage can put frosted backdrop behind it.
+struct GlassPanel {
+    let anchor: Anchor<CGRect>
+    let radius: CGFloat
+}
+
+struct GlassPanelsKey: PreferenceKey {
+    static let defaultValue: [GlassPanel] = []
+    static func reduce(value: inout [GlassPanel], nextValue: () -> [GlassPanel]) { value += nextValue() }
+}
+
+/// The glass itself: a faint tint, a light sheen, and a bright edge where light
+/// catches it. The blur comes from `GlassStage`.
+struct GlassSurface: View {
+    let radius: CGFloat
+    let tint: Double
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        ZStack {
+            shape.fill(Color.black.opacity(tint))
+            shape.fill(LinearGradient(colors: [.white.opacity(0.2), .white.opacity(0.05), .white.opacity(0.02)],
+                                      startPoint: .topLeading, endPoint: .bottomTrailing))
+            shape.strokeBorder(LinearGradient(colors: [.white.opacity(0.6), .white.opacity(0.12), .white.opacity(0.08), .white.opacity(0.3)],
+                                              startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1.2)
+        }
+    }
+}
+
+extension View {
+    func glass(radius: CGFloat, tint: Double) -> some View {
+        background(GlassSurface(radius: radius, tint: tint))
+            .anchorPreference(key: GlassPanelsKey.self, value: .bounds) { [GlassPanel(anchor: $0, radius: radius)] }
+    }
+}
+
+/// Backdrop + board, with a blurred copy of the backdrop showing through each
+/// glass panel.
+struct GlassStage<Backdrop: View>: View {
+    let board: Board?
+    let t: Double
+    let now: Date
+    let size: CGSize
+    @ViewBuilder let backdrop: () -> Backdrop
+
+    var body: some View {
+        let blur = CGFloat(board?.settings.glassBlur ?? HelmSettings().glassBlur)
+        ZStack {
+            backdrop()
+            BoardView(board: board, t: t, now: now, size: size)
+                .backgroundPreferenceValue(GlassPanelsKey.self) { panels in
+                    if blur > 0.5 {
+                        GeometryReader { geo in
+                            backdrop()
+                                .blur(radius: blur, opaque: true)
+                                .saturation(1.25)
+                                .mask {
+                                    ZStack(alignment: .topLeading) {
+                                        ForEach(Array(panels.enumerated()), id: \.offset) { _, panel in
+                                            let r = geo[panel.anchor]
+                                            RoundedRectangle(cornerRadius: panel.radius, style: .continuous)
+                                                .frame(width: r.width, height: r.height)
+                                                .offset(x: r.minX, y: r.minY)
+                                        }
+                                    }
+                                    .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                                }
+                        }
+                    }
+                }
+        }
+        .frame(width: size.width, height: size.height)
     }
 }

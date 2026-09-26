@@ -41,7 +41,14 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 10) {
-                Image(nsImage: Logo.appIcon(size: 64)).resizable().frame(width: 44, height: 44)
+                if let mark = Logo.mask {
+                    // Just the bat, tinted to match light or dark mode.
+                    Image(nsImage: mark).renderingMode(.template).resizable()
+                        .aspectRatio(contentMode: .fit).frame(width: 54)
+                        .foregroundStyle(.primary)
+                } else {
+                    Image(nsImage: Logo.appIcon(size: 64)).resizable().frame(width: 44, height: 44)
+                }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Helm").font(.system(size: 17, weight: .bold))
                     Text("Screensaver").font(.caption).foregroundStyle(.secondary)
@@ -155,8 +162,9 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
         }
-        Section("Contrast") {
-            slider("Panel darkness", value: $engine.settings.panelOpacity, in: 0...0.9, format: { "\(Int($0 * 100))%" })
+        Section("Glass") {
+            slider("Glass blur", value: $engine.settings.glassBlur, in: 0...60, format: { $0 < 0.5 ? "Off" : "\(Int($0))" })
+            slider("Glass tint", value: $engine.settings.panelOpacity, in: 0...0.9, format: { "\(Int($0 * 100))%" })
             slider("Photo dimming", value: $engine.settings.backgroundDim, in: 0...0.9, format: { "\(Int($0 * 100))%" })
         }
         Section {
@@ -166,6 +174,7 @@ struct SettingsView: View {
                 engine.settings.fontDesign = d.fontDesign
                 engine.settings.textScale = d.textScale
                 engine.settings.panelOpacity = d.panelOpacity
+                engine.settings.glassBlur = d.glassBlur
                 engine.settings.backgroundDim = d.backgroundDim
                 engine.settings.notesOnLeft = d.notesOnLeft
             }
@@ -297,15 +306,14 @@ struct BoardPreview: View {
         let canvas = CGSize(width: 1470, height: 956)
         GeometryReader { geo in
             let scale = geo.size.width / canvas.width
-            ZStack {
-                if engine.settings.showPhotos, let photo {
-                    Image(nsImage: photo).resizable().aspectRatio(contentMode: .fill)
-                        .frame(width: canvas.width, height: canvas.height).clipped()
-                } else {
-                    Color.black
-                }
-                TimelineView(.periodic(from: .now, by: 1)) { tl in
-                    BoardView(board: previewBoard, t: 10, now: tl.date, size: canvas)
+            TimelineView(.periodic(from: .now, by: 1)) { tl in
+                GlassStage(board: previewBoard, t: 10, now: tl.date, size: canvas) {
+                    if engine.settings.showPhotos, let photo {
+                        Image(nsImage: photo).resizable().aspectRatio(contentMode: .fill)
+                            .frame(width: canvas.width, height: canvas.height).clipped()
+                    } else {
+                        Color.black
+                    }
                 }
             }
             .frame(width: canvas.width, height: canvas.height)

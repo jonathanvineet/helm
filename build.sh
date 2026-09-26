@@ -31,6 +31,7 @@ echo "built $SAVER"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Resources/App-Info.plist "$APP/Contents/Info.plist"
+cp Resources/logo-mask.png "$APP/Contents/Resources/"
 swiftc "${FLAGS[@]}" -module-name Helm -lsqlite3 \
     -framework AppKit -framework SwiftUI -framework EventKit -framework OSAKit \
     Sources/Shared/*.swift Sources/App/*.swift -o "$APP/Contents/MacOS/Helm"

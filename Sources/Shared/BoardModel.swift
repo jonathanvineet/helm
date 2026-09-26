@@ -81,7 +81,8 @@ struct HelmSettings: Codable, Equatable {
     var accentHex = "#34C759"
     var fontDesign = "default"  // default, rounded, serif, monospaced
     var textScale = 1.0
-    var panelOpacity = 0.42
+    var panelOpacity = 0.25
+    var glassBlur = 28.0
     var backgroundDim = 0.35
     var columns = 0  // 0 = automatic
     var notesOnLeft = true
@@ -117,6 +118,7 @@ struct HelmSettings: Codable, Equatable {
         fontDesign = v(.fontDesign, d.fontDesign)
         textScale = v(.textScale, d.textScale)
         panelOpacity = v(.panelOpacity, d.panelOpacity)
+        glassBlur = v(.glassBlur, d.glassBlur)
         backgroundDim = v(.backgroundDim, d.backgroundDim)
         columns = v(.columns, d.columns)
         notesOnLeft = v(.notesOnLeft, d.notesOnLeft)
