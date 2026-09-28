@@ -105,14 +105,52 @@ final class HelmSaverView: ScreenSaverView {
 
     override func layout() {
         super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        sharp.fit(to: photoView.bounds)
+        frosted.fit(to: frostView.bounds)
+        CATransaction.commit()
         updateMask()
     }
+
+    /// On an automatic start, legacyScreenSaver sometimes builds the second
+    /// display's window (or our view) at the main screen's size and never
+    /// resizes it, leaving the board in one corner. Stretch the window over the
+    /// display it actually sits on, and ourselves over the window.
+    private func fitToDisplay() {
+        guard !isPreview, let window else { return }
+        let wf = window.frame
+        let screens = NSScreen.screens
+        if !screens.contains(where: { $0.frame == wf }),
+           let screen = screens.max(by: { area($0.frame.intersection(wf)) < area($1.frame.intersection(wf)) }),
+           area(screen.frame.intersection(wf)) > 0 {
+            log.notice("window \(String(describing: wf), privacy: .public) resized to screen \(String(describing: screen.frame), privacy: .public)")
+            window.setFrame(screen.frame, display: true)
+        }
+        if let superview, frame != superview.bounds {
+            log.notice("view \(String(describing: self.frame), privacy: .public) resized to \(String(describing: superview.bounds), privacy: .public)")
+            autoresizingMask = [.width, .height]
+            frame = superview.bounds
+        }
+    }
+
+    private func area(_ r: NSRect) -> CGFloat { r.isNull ? 0 : r.width * r.height }
+
+    @objc private func windowChanged(_ note: Notification) { fitToDisplay() }
 
     // MARK: One view per display
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        guard !isPreview, window != nil else { return }
+        guard !isPreview, let window else { return }
+        let nc = NotificationCenter.default
+        nc.removeObserver(self, name: NSWindow.didResizeNotification, object: nil)
+        nc.removeObserver(self, name: NSWindow.didMoveNotification, object: nil)
+        nc.addObserver(self, selector: #selector(windowChanged), name: NSWindow.didResizeNotification, object: window)
+        nc.addObserver(self, selector: #selector(windowChanged), name: NSWindow.didMoveNotification, object: window)
+        fitToDisplay()
+        // legacyScreenSaver may still be positioning the window.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.fitToDisplay() }
         Self.live.removeAll { $0.view == nil }
         for other in Self.live.compactMap(\.view)
         where other !== self && !other.superseded && other.bounds.size == bounds.size
@@ -309,6 +347,14 @@ final class SlideStage {
         if let old {
             DispatchQueue.main.asyncAfter(deadline: .now() + fade + 0.1) { old.removeFromSuperlayer() }
         }
+    }
+
+    /// Layer autoresizing doesn't reliably follow a layer-backed view's
+    /// resize, so the view resizes the stage explicitly.
+    func fit(to bounds: CGRect) {
+        guard root.frame != bounds else { return }
+        root.frame = bounds
+        root.sublayers?.forEach { $0.frame = bounds }
     }
 
     func clear() {
