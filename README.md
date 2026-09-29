@@ -3,6 +3,8 @@
 A macOS screensaver that shows your Apple Notes and Reminders on frosted glass
 over a Ken Burns photo slideshow, with a menu bar app that keeps it in sync.
 
+![Helm showing notes and reminders on frosted glass](docs/screenshot.png)
+
 ## Install
 
 ```sh
@@ -24,6 +26,16 @@ Helm isn't notarized yet, so the cask clears macOS's download quarantine flag fr
 ```sh
 ./build.sh --install
 ```
+
+## Screenshot
+
+`docs/screenshot.png` is drawn from the demo board, not your own notes:
+
+```sh
+build/helm-render docs/screenshot.png 5 "" docs/demo-board.json
+```
+
+Pass a photo path instead of `""` to render over a photo.
 
 ## Release
 

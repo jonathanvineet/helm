@@ -1,0 +1,200 @@
+{
+  "updated": "2026-09-29T09:36:07Z",
+  "settings": {
+    "accentHex": "#4A7182",
+    "backgroundDim": 0.48294642857142844,
+    "columns": 0,
+    "fontDesign": "rounded",
+    "glassBlur": 4.793303571428572,
+    "hideTickedItems": false,
+    "maxNotes": 12,
+    "notesFolder": "Helm",
+    "notesOnLeft": true,
+    "panelOpacity": 0.10597098214285706,
+    "photoDuration": 12,
+    "photoFolder": "",
+    "reminderLists": [],
+    "showClock": true,
+    "showDoneToday": true,
+    "showNotes": true,
+    "showPhotos": true,
+    "showReminders": true,
+    "syncInterval": 10,
+    "textScale": 0.9977142857142858,
+    "use24Hour": false,
+    "zoomAmount": 1
+  },
+  "notes": [
+    {
+      "title": "Weekend",
+      "lines": [
+        {
+          "text": "Farmers market",
+          "kind": "check",
+          "done": true,
+          "indent": 0
+        },
+        {
+          "text": "Call grandma",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "Fix the bike tyre",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "Book train tickets",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "modified": "2026-09-29T08:36:07Z"
+    },
+    {
+      "title": "Groceries",
+      "lines": [
+        {
+          "text": "Oat milk",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "Sourdough",
+          "kind": "check",
+          "done": true,
+          "indent": 0
+        },
+        {
+          "text": "Coffee beans",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "Lemons",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "modified": "2026-09-29T06:36:07Z"
+    },
+    {
+      "title": "Reading",
+      "lines": [
+        {
+          "text": "Project Hail Mary",
+          "kind": "bullet",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "The Pragmatic Programmer",
+          "kind": "bullet",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "Piranesi",
+          "kind": "bullet",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "modified": "2026-09-28T07:36:07Z"
+    },
+    {
+      "title": "Ideas",
+      "lines": [
+        {
+          "text": "Dark mode for the blog",
+          "kind": "text",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "Weekly photo walk",
+          "kind": "text",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "modified": "2026-09-29T04:36:07Z"
+    },
+    {
+      "title": "Trip to Kyoto",
+      "lines": [
+        {
+          "text": "Passport renewal",
+          "kind": "check",
+          "done": true,
+          "indent": 0
+        },
+        {
+          "text": "Ryokan booking",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "JR pass",
+          "kind": "check",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "modified": "2026-09-27T09:36:07Z"
+    },
+    {
+      "title": "Gym",
+      "lines": [
+        {
+          "text": "Mon \u00b7 Wed \u00b7 Fri",
+          "kind": "text",
+          "done": false,
+          "indent": 0
+        },
+        {
+          "text": "5k run on Sunday",
+          "kind": "text",
+          "done": false,
+          "indent": 0
+        }
+      ],
+      "modified": "2026-09-26T09:36:07Z"
+    }
+  ],
+  "todo": [
+    {
+      "title": "Submit expense report",
+      "list": "Work",
+      "due": "2026-09-29T13:36:07Z"
+    },
+    {
+      "title": "Dentist appointment",
+      "list": "Personal",
+      "due": "2026-09-30T09:36:07Z"
+    },
+    {
+      "title": "Renew domain",
+      "list": "Personal"
+    },
+    {
+      "title": "Review pull requests",
+      "list": "Work"
+    }
+  ],
+  "done": [
+    {
+      "title": "Water the plants",
+      "list": "Home",
+      "completed": "2026-09-29T07:36:07Z"
+    }
+  ]
+}
