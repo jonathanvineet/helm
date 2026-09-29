@@ -163,6 +163,7 @@ final class SyncEngine: ObservableObject {
 
 enum PhotoSync {
     static func run(from source: URL, to dest: URL) -> Int {
+        guard Board.containerReady else { return 0 }
         let fm = FileManager.default
         try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
         let exts: Set<String> = ["jpg", "jpeg", "png", "heic", "tiff", "webp"]

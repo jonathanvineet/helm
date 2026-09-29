@@ -46,6 +46,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         engine.start()
         log("Helm started")
+        firstLaunch()
+    }
+
+    /// Installed via Homebrew rather than build.sh: turn on open-at-login, and
+    /// if the screensaver has never been selected, send the user to pick it.
+    private func firstLaunch() {
+        let key = "didFirstLaunch"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        if !LoginItem.isEnabled { LoginItem.set(true) }
+        if !Board.containerReady {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.ScreenSaver-Settings.extension")!)
+        }
+        openSettings()
     }
 
     func menuWillOpen(_ menu: NSMenu) {

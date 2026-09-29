@@ -15,9 +15,19 @@ struct Board: Codable {
     /// the sandboxed saver can read it. Built from the real home directory so
     /// the path is the same from inside and outside the sandbox.
     static var directory: URL {
+        container.appendingPathComponent("Data/Library/Application Support/Helm")
+    }
+
+    /// macOS creates this container the first time a third-party screensaver
+    /// is loaded. Creating it ourselves leaves it without its metadata, so on a
+    /// fresh Mac nothing is written until Helm has been picked in System Settings.
+    static var container: URL {
         let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
-        return URL(fileURLWithPath: home)
-            .appendingPathComponent("Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data/Library/Application Support/Helm")
+        return URL(fileURLWithPath: home).appendingPathComponent("Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver")
+    }
+
+    static var containerReady: Bool {
+        FileManager.default.fileExists(atPath: container.appendingPathComponent(".com.apple.containermanagerd.metadata.plist").path)
     }
 
     static var fileURL: URL { directory.appendingPathComponent("board.json") }
@@ -34,6 +44,7 @@ struct Board: Codable {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard Self.containerReady else { throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: Self.container.path]) }
         try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
         try encoder.encode(self).write(to: Self.fileURL, options: .atomic)
     }
