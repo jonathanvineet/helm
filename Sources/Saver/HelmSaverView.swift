@@ -116,25 +116,38 @@ final class HelmSaverView: ScreenSaverView {
     /// On an automatic start, legacyScreenSaver sometimes builds the second
     /// display's window (or our view) at the main screen's size and never
     /// resizes it, leaving the board in one corner. Stretch the window over the
-    /// display it actually sits on, and ourselves over the window.
+    /// display it actually sits on, and ourselves over the window. The view is
+    /// often attached before its container has a size, so empty frames are
+    /// ignored rather than copied.
     private func fitToDisplay() {
         guard !isPreview, let window else { return }
         let wf = window.frame
-        let screens = NSScreen.screens
-        if !screens.contains(where: { $0.frame == wf }),
-           let screen = screens.max(by: { area($0.frame.intersection(wf)) < area($1.frame.intersection(wf)) }),
+        log.notice("window \(String(describing: wf), privacy: .public), container \(String(describing: self.superview?.bounds), privacy: .public), view \(String(describing: self.frame), privacy: .public)")
+        if area(wf) > 0, !NSScreen.screens.contains(where: { $0.frame == wf }),
+           let screen = NSScreen.screens.max(by: { area($0.frame.intersection(wf)) < area($1.frame.intersection(wf)) }),
            area(screen.frame.intersection(wf)) > 0 {
-            log.notice("window \(String(describing: wf), privacy: .public) resized to screen \(String(describing: screen.frame), privacy: .public)")
+            log.notice("window resized to screen \(String(describing: screen.frame), privacy: .public)")
             window.setFrame(screen.frame, display: true)
         }
-        if let superview, frame != superview.bounds {
-            log.notice("view \(String(describing: self.frame), privacy: .public) resized to \(String(describing: superview.bounds), privacy: .public)")
-            autoresizingMask = [.width, .height]
-            frame = superview.bounds
-        }
+        fillContainer()
     }
 
-    private func area(_ r: NSRect) -> CGFloat { r.isNull ? 0 : r.width * r.height }
+    private func fillContainer() {
+        guard !isPreview, let superview, area(superview.bounds) > 0, frame != superview.bounds else { return }
+        log.notice("view \(String(describing: self.frame), privacy: .public) resized to \(String(describing: superview.bounds), privacy: .public)")
+        frame = superview.bounds
+    }
+
+    /// Always match the container once it has a size, instead of autoresizing,
+    /// which carries over any mismatch (or a 0×0 start) forever.
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        guard !isPreview, let superview, area(superview.bounds) > 0 else {
+            return super.resize(withOldSuperviewSize: oldSize)
+        }
+        fillContainer()
+    }
+
+    private func area(_ r: NSRect) -> CGFloat { r.isNull || r.isEmpty ? 0 : r.width * r.height }
 
     @objc private func windowChanged(_ note: Notification) { fitToDisplay() }
 

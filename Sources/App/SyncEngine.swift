@@ -153,6 +153,7 @@ final class SyncEngine: ObservableObject {
     /// Copies (downsized) photos to where the sandboxed screensaver can read them.
     func syncPhotos() {
         let source = photoSource
+        if photoCount == 0 { photoCount = PhotoSync.existing(in: Board.photosURL) }
         queue.async {
             let count = PhotoSync.run(from: source, to: Board.photosURL)
             DispatchQueue.main.async { self.photoCount = count }
@@ -165,7 +166,16 @@ enum PhotoSync {
         let fm = FileManager.default
         try? fm.createDirectory(at: dest, withIntermediateDirectories: true)
         let exts: Set<String> = ["jpg", "jpeg", "png", "heic", "tiff", "webp"]
-        let photos = ((try? fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [])
+        // If the folder can't be read (no Downloads access yet, a drive not
+        // mounted), keep the copies the screensaver already has.
+        let listing: [URL]
+        do {
+            listing = try fm.contentsOfDirectory(at: source, includingPropertiesForKeys: [.contentModificationDateKey])
+        } catch {
+            NSLog("Helm: can't read photo folder %@: %@", source.path, error.localizedDescription)
+            return existing(in: dest)
+        }
+        let photos = listing
             .filter { exts.contains($0.pathExtension.lowercased()) }
         var wanted = Set<String>()
         let maxPixels = Int((NSScreen.screens.map { max($0.frame.width, $0.frame.height) * $0.backingScaleFactor }.max() ?? 3000) * 1.25)
@@ -190,5 +200,9 @@ enum PhotoSync {
             try? fm.removeItem(at: dest.appendingPathComponent(old))
         }
         return wanted.count
+    }
+
+    static func existing(in dest: URL) -> Int {
+        ((try? FileManager.default.contentsOfDirectory(atPath: dest.path)) ?? []).filter { $0.hasSuffix(".jpg") }.count
     }
 }
