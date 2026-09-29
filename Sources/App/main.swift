@@ -46,7 +46,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         engine.start()
         log("Helm started")
+        unquarantineSaver()
         firstLaunch()
+    }
+
+    /// Helm isn't notarized, and legacyScreenSaver won't load a quarantined
+    /// saver. The Homebrew cask can't reach ~/Library/Screen Savers from its
+    /// sandbox, so the app clears the flag itself.
+    private func unquarantineSaver() {
+        let paths = [realHome + "/Library/Screen Savers/Helm.saver", "/Library/Screen Savers/Helm.saver"]
+        for path in paths where FileManager.default.fileExists(atPath: path) {
+            let xattr = Process()
+            xattr.executableURL = URL(fileURLWithPath: "/usr/bin/xattr")
+            xattr.arguments = ["-dr", "com.apple.quarantine", path]
+            try? xattr.run()
+        }
     }
 
     /// Installed via Homebrew rather than build.sh: turn on open-at-login, and

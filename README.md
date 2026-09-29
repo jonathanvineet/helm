@@ -13,11 +13,11 @@ brew install --cask jonathanvineet/tap/helm
 
 Then:
 
-1. **System Settings → Screen Saver:** pick Helm.
-2. **Open Helm.** It lives in the menu bar and starts at login.
+1. **Open Helm.** It lives in the menu bar and starts at login.
+2. **System Settings → Screen Saver:** pick Helm.
 3. **Grant access** to Reminders, and Full Disk Access so Helm can read Apple Notes.
 
-Helm isn't notarized yet, so the cask clears macOS's download quarantine flag on install.
+Helm isn't notarized yet, so the cask clears macOS's download quarantine flag from the app, and the app clears it from the screensaver when it launches.
 
 ## Build from source
 

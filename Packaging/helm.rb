@@ -8,23 +8,23 @@ cask "helm" do
   desc "Screensaver showing your Apple Notes and Reminders over a photo slideshow"
   homepage "https://github.com/@REPO@"
 
-  depends_on macos: ">= :sonoma"
+  depends_on macos: :sonoma
 
   app "Helm.app"
   screen_saver "Helm.saver"
 
-  # Helm isn't notarized, so Gatekeeper would refuse to open the app and the
-  # screensaver would silently fail to load. Clear the download quarantine.
-  postflight do
-    system_command "/usr/bin/xattr",
-                   args: ["-dr", "com.apple.quarantine",
-                          "#{appdir}/Helm.app",
-                          "#{Dir.home}/Library/Screen Savers/Helm.saver"]
+  # Helm isn't notarized, so Gatekeeper would refuse to open the app. Clear
+  # the download quarantine; the app does the same for the screensaver.
+  postflight_steps do
+    run "/usr/bin/xattr",
+        args:           ["-dr", "com.apple.quarantine", "{{appdir}}/Helm.app"],
+        writable_paths: ["{{appdir}}/Helm.app"],
+        must_succeed:   false
   end
 
+  # launchctl also removes the login agent's plist.
   uninstall launchctl: "com.jonathanvineet.helm",
-            quit:      "com.jonathanvineet.helm",
-            delete:    "~/Library/LaunchAgents/com.jonathanvineet.helm.plist"
+            quit:      "com.jonathanvineet.helm"
 
   zap trash: [
     "~/Library/Containers/com.apple.ScreenSaver.Engine.legacyScreenSaver/Data/Library/Application Support/Helm",
@@ -34,8 +34,8 @@ cask "helm" do
 
   caveats <<~EOS
     To finish setting up:
-      1. System Settings → Screen Saver: pick Helm.
-      2. Open Helm (it lives in the menu bar and starts at login).
+      1. Open Helm (it lives in the menu bar and starts at login).
+      2. System Settings → Screen Saver: pick Helm.
       3. Allow Reminders access, and Full Disk Access to read Apple Notes.
   EOS
 end
