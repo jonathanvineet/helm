@@ -280,7 +280,7 @@ test("watch changes are sent to Helm.app for the screensaver board", async () =>
   expect(message.source).toMatch(/^[0-9a-f-]{36}$/);
   expect(message.watches).toEqual([
     expect.objectContaining({ name: "order", text: "Out for delivery", quoted: true, state: "attention" }),
-    { name: "review", text: "Still in review", quoted: false, state: "pending", since: 1000, checked: 2000 },
+    expect.objectContaining({ name: "review", text: "Still in review", quoted: false, state: "pending", since: 1000, checked: 2000 }),
     expect.objectContaining({ name: "signed-out", text: "Signed out, log in again", quoted: false, state: "attention" }),
     expect.objectContaining({ name: "delivered", text: "Delivered", quoted: true, state: "done" }),
   ]);
@@ -331,4 +331,49 @@ test("a page that's already open is checked in its tab, not a new window", async
   expect(await page.locator("#status").textContent()).toBe("Out for delivery");
   await other.close();
   await page.close();
+});
+
+test("understands a delivery: ignores timestamp churn, reports real stage changes", async () => {
+  served = "In transit · updated 5 min ago";
+  await sw.evaluate(() => {
+    self.notified = [];
+    const original = self.watcherNotify;
+    self.watcherNotify = (w, message, settings) => { self.notified.push(message); original(w, message, settings); };
+  });
+  await setWatches([changeWatch("parcel", {
+    kind: "delivery", current: "In transit · updated 5 min ago", baseline: "In transit · updated 5 min ago", done: [],
+  })]);
+
+  served = "In transit · updated 12 min ago";
+  await runChecks();
+  let [w] = await getWatches();
+  expect(w.current).toBe("In transit · updated 12 min ago");
+  expect(w.unseen).toBeFalsy();  // same stage, nothing to tell
+  expect(w.insight).toMatchObject({ kind: "delivery", stage: "On the way", step: 3, steps: 5, tone: "waiting" });
+
+  served = "Out for delivery";
+  await runChecks();
+  [w] = await getWatches();
+  expect(w.unseen).toBe(true);
+  expect(w.insight.stage).toBe("Out for delivery");
+
+  served = "Delivered today";
+  await runChecks();
+  [w] = await getWatches();
+  expect(w.status).toBe("done");  // no "done" phrase needed
+  expect(await sw.evaluate(() => self.notified)).toEqual([
+    "📦 Out for delivery (was On the way)",
+    "📦 Delivered (was Out for delivery)",
+  ]);
+});
+
+test("an older watch without a kind gets one on its next check", async () => {
+  served = "Your changes are now in review.";
+  await setWatches([changeWatch("legacy", {
+    url: `${base}/console/publishing`, name: "Publishing overview", current: served, baseline: served, done: [],
+  })]);
+  await runChecks();
+  const [w] = await getWatches();
+  expect(w.kind).toBe("appReview");
+  expect(w.insight.stage).toBe("In review");
 });

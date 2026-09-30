@@ -83,9 +83,17 @@ struct BoardWatch: Codable {
     var state: State
     var since: Date?
     var checked: Date?
+    /// What the extension worked out it is: delivery, appReview, access, government,
+    /// job, results, booking, refund, ticket, build, product or general.
+    var kind = "general"
+    /// How far along its stages it is (step of steps), when that's known.
+    var step = 0
+    var steps = 0
 
-    init(name: String, text: String, quoted: Bool = false, state: State, since: Date? = nil, checked: Date? = nil) {
+    init(name: String, text: String, quoted: Bool = false, state: State, since: Date? = nil, checked: Date? = nil,
+         kind: String = "general", step: Int = 0, steps: Int = 0) {
         (self.name, self.text, self.quoted, self.state, self.since, self.checked) = (name, text, quoted, state, since, checked)
+        (self.kind, self.step, self.steps) = (kind, step, steps)
     }
 
     init(from decoder: Decoder) throws {
@@ -96,6 +104,9 @@ struct BoardWatch: Codable {
         state = (try? c.decode(State.self, forKey: .state)) ?? .watching
         since = try c.decodeIfPresent(Date.self, forKey: .since)
         checked = try c.decodeIfPresent(Date.self, forKey: .checked)
+        kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "general"
+        step = try c.decodeIfPresent(Int.self, forKey: .step) ?? 0
+        steps = try c.decodeIfPresent(Int.self, forKey: .steps) ?? 0
     }
 
     /// Where the extension's latest watches are kept for Helm.app to read.

@@ -380,7 +380,7 @@ struct BoardView: View {
 
     private func watchesPanel(base: CGFloat, fill: Bool) -> some View {
         let updates = watches.filter { $0.state == .attention }.count
-        let maxWatches = fill ? 7 : 3
+        let maxWatches = !fill ? 3 : watches.count > 5 ? 4 : 5
         return VStack(alignment: .leading, spacing: base * 0.7) {
             HStack(alignment: .firstTextBaseline) {
                 Text("WAITING ON")
@@ -409,18 +409,42 @@ struct BoardView: View {
             }
             if fill { Spacer(minLength: 0) }
         }
+        // Give way rather than push the board off screen on small displays.
+        .frame(minHeight: 0, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
+        .clipped()
         .padding(base * 1.4)
         .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
         .glass(radius: base * 1.1, tint: s.panelOpacity)
     }
 
-    private func watchRow(_ watch: BoardWatch, base: CGFloat) -> some View {
-        let (icon, color): (String, Color) = switch watch.state {
-        case .attention: ("exclamationmark.circle.fill", .orange)
-        case .pending: ("hourglass.circle", .yellow)
-        case .watching: ("eye.circle", .white.opacity(0.8))
-        case .done: ("checkmark.circle.fill", accent)
+    /// A symbol for what the watch is; the colour says how it's going.
+    private func kindSymbol(_ kind: String) -> String {
+        switch kind {
+        case "delivery": "shippingbox.fill"
+        case "appReview": "app.badge.fill"
+        case "access": "key.fill"
+        case "government": "building.columns.fill"
+        case "job": "briefcase.fill"
+        case "results": "graduationcap.fill"
+        case "booking": "ticket.fill"
+        case "refund": "creditcard.fill"
+        case "ticket": "bubble.left.and.bubble.right.fill"
+        case "build": "hammer.fill"
+        case "product": "tag.fill"
+        default: "eye.fill"
         }
+    }
+
+    private func watchRow(_ watch: BoardWatch, base: CGFloat) -> some View {
+        let color: Color = switch watch.state {
+        case .attention: .orange
+        case .pending: .yellow
+        case .watching: .white.opacity(0.8)
+        case .done: accent
+        }
+        let icon = watch.state == .done ? "checkmark.circle.fill"
+            : watch.state == .attention && watch.kind == "general" ? "exclamationmark.circle.fill"
+            : kindSymbol(watch.kind)
         var detail = watch.quoted ? "“\(watch.text)”" : watch.text
         if let since = watch.since {
             detail += " · " + since.formatted(.relative(presentation: .named))
@@ -429,6 +453,7 @@ struct BoardView: View {
             Image(systemName: icon)
                 .font(.system(size: base * 1.1))
                 .foregroundStyle(color)
+                .frame(width: base * 1.6)
             VStack(alignment: .leading, spacing: base * 0.1) {
                 Text(watch.name)
                     .font(font(base * 1.15, .medium))
@@ -438,8 +463,24 @@ struct BoardView: View {
                     .font(font(base * 0.8))
                     .foregroundStyle(watch.state == .attention ? Color.orange : .white.opacity(0.55))
                     .lineLimit(1)
+                if watch.steps > 1 && watch.step > 0 && watch.state != .attention {
+                    stepsBar(step: watch.step, of: watch.steps, color: color, base: base)
+                        .padding(.top, base * 0.25)
+                }
             }
         }
+    }
+
+    /// Segments for each stage, filled up to the current one.
+    private func stepsBar(step: Int, of steps: Int, color: Color, base: CGFloat) -> some View {
+        HStack(spacing: base * 0.2) {
+            ForEach(1...steps, id: \.self) { i in
+                Capsule()
+                    .fill(i <= step ? color : .white.opacity(0.18))
+                    .frame(height: base * 0.25)
+            }
+        }
+        .frame(maxWidth: base * 12)
     }
 
     // MARK: Footer

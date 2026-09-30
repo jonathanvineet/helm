@@ -54,8 +54,13 @@ function watcherAgo(ts) {
   return `${Math.floor(h / 24)} days ago`;
 }
 
+const WATCHER_TONE_CLASS = { done: "done", problem: "problem", action: "problem", waiting: "pending" };
+
 function watcherStatusLine(w) {
   if (w.status === "login") return { text: WATCHER_LABEL.login, cls: "problem" };
+  if (w.insight?.stage) {
+    return { text: `${watcherKind(w.kind).icon} ${watcherInsightLine(w.insight)}`, cls: WATCHER_TONE_CLASS[w.insight.tone] || "" };
+  }
   if (w.mode === "keyword") {
     const cls = { pending: "pending", done: "done", changed: "problem", missing: "problem" }[w.status] || "";
     return { text: WATCHER_LABEL[w.status] || "Not checked yet", cls };
@@ -68,7 +73,8 @@ function watcherMetaLine(w) {
   const lead = w.mode === "keyword"
     ? (w.since ? `In this state since ${watcherAgo(w.since)}` : "")
     : `Last changed ${watcherAgo(w.since)}`;
-  return [lead, checked].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
+  const kind = w.kind && w.kind !== "general" ? `${watcherKind(w.kind).label} · ` : "";
+  return kind + [lead, checked].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
 }
 
 function watcherRenderList(watches) {
@@ -102,10 +108,33 @@ function watcherRenderList(watches) {
     status.className = `status ${cls}`;
     status.textContent = text;
 
+    li.append(top, status);
+
+    // Progress through the stages, and the page's own words under a stage name.
+    const insight = w.insight;
+    if (insight?.steps > 1 && insight.step > 0 && insight.tone !== "problem") {
+      const steps = document.createElement("div");
+      steps.className = `steps ${insight.tone === "done" ? "done" : "waiting"}`;
+      steps.setAttribute("role", "img");
+      steps.setAttribute("aria-label", `Step ${insight.step} of ${insight.steps}`);
+      for (let i = 1; i <= insight.steps; i++) {
+        const seg = document.createElement("span");
+        if (i <= insight.step) seg.className = "on";
+        steps.append(seg);
+      }
+      li.append(steps);
+    }
+    if (insight?.stage && w.mode === "change" && w.current) {
+      const raw = document.createElement("div");
+      raw.className = "raw";
+      raw.textContent = `“${w.current}”`;
+      li.append(raw);
+    }
+
     const meta = document.createElement("div");
     meta.className = "meta";
     meta.textContent = watcherMetaLine(w);
-    li.append(top, status, meta);
+    li.append(meta);
 
     if (w.error) {
       const error = document.createElement("div");
@@ -166,12 +195,43 @@ function watcherRenderForm() {
   preview.textContent = watcherSelection
     ? `Watching: “${watcherSelection.elText}”`
     : "Nothing is selected. Close this popup, select the status text on the page, and open it again.";
+  watcherRenderUnderstood();
+}
+
+/** What Helm makes of the page, so you can correct the kind before saving. */
+function watcherRenderUnderstood() {
+  const line = $("watcher-understood");
+  const kind = watcherKind($("watcher-kind").value);
+  const keyword = watcherMode() === "keyword";
+  if (keyword) {
+    line.textContent = kind.id === "general"
+      ? "You'll be told when the waiting text disappears."
+      : `${kind.icon} You'll be told when the waiting text disappears, and what it says instead when Helm can tell.`;
+    return;
+  }
+  if (!watcherSelection) {
+    line.textContent = "";
+    return;
+  }
+  const insight = watcherInterpret(kind.id, watcherSelection.elText);
+  if (insight.stage) {
+    const step = insight.steps > 1 && insight.step > 0 ? ` (step ${insight.step} of ${insight.steps})` : "";
+    line.textContent = `${kind.icon} Reads as: ${watcherInsightLine(insight)}${step}. You'll hear when that moves on or something goes wrong.`;
+  } else {
+    line.textContent = `${kind.icon} Helm can't tell the stage from this text, so it'll tell you about any real change.`;
+  }
+}
+
+function watcherGuessKind(tab) {
+  const text = watcherSelection?.elText || $("watcher-pending").value;
+  $("watcher-kind").value = watcherRecognize({ url: tab?.url, title: tab?.title, text }).kind;
 }
 
 function watcherPrefill(tab) {
   $("watcher-name").value = (tab?.title || "").slice(0, 40);
   $("watcher-url").value = /^https?:/.test(tab?.url || "") ? tab.url : "";
   $("watcher-pending").value = watcherSelection?.text || "";
+  watcherGuessKind(tab);
   watcherRenderForm();
 }
 
@@ -187,15 +247,19 @@ async function watcherSubmit(event, tab) {
   if (!name) return (error.textContent = "Give the watch a name.");
   if (!/^https?:\/\//.test(url)) return (error.textContent = "Enter a page address starting with http:// or https://.");
 
-  const w = { id: crypto.randomUUID(), name, url, mode, done: watcherSplit($("watcher-done").value), wait };
+  const kind = $("watcher-kind").value;
+  const w = { id: crypto.randomUUID(), name, url, mode, kind, done: watcherSplit($("watcher-done").value), wait };
   if (mode === "change") {
     if (!watcherSelection) return (error.textContent = "Select the status text on the page first, then open this popup again.");
+    const insight = watcherInterpret(kind, watcherSelection.elText);
     Object.assign(w, {
       selector: watcherSelection.selector,
       baseline: watcherSelection.elText,
       current: watcherSelection.elText,
       since: Date.now(),
-      status: "watching",
+      insight,
+      signature: watcherSignature(insight, watcherSelection.elText),
+      status: insight.tone === "done" || watcherIsDone(watcherSelection.elText, watcherSplit($("watcher-done").value)) ? "done" : "watching",
     });
   } else {
     const pending = watcherSplit($("watcher-pending").value);
@@ -245,6 +309,11 @@ async function watcherInit() {
     }
   }
 
+  const kinds = $("watcher-kind");
+  for (const k of [...WATCHER_KINDS.filter((k) => k.id !== "general"), watcherKind("general")]) {
+    kinds.append(new Option(`${k.icon} ${k.label}`, k.id));
+  }
+  kinds.addEventListener("change", watcherRenderUnderstood);
   watcherPrefill(tab);
   for (const radio of document.querySelectorAll('input[name="mode"]')) radio.addEventListener("change", watcherRenderForm);
   $("watcher-form").addEventListener("submit", (e) => watcherSubmit(e, tab));

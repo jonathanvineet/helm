@@ -98,6 +98,9 @@ extension BoardWatch {
                   quoted: m["quoted"] as? Bool ?? false,
                   state: (m["state"] as? String).flatMap(State.init(rawValue:)) ?? .watching,
                   since: date("since"),
-                  checked: date("checked"))
+                  checked: date("checked"),
+                  kind: String((m["kind"] as? String ?? "general").prefix(20)),
+                  step: max(0, min(20, m["step"] as? Int ?? 0)),
+                  steps: max(0, min(20, m["steps"] as? Int ?? 0)))
     }
 }

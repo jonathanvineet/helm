@@ -118,17 +118,24 @@ async function watcherSource() {
 /** What the board shows for a watch. */
 function watcherBoardEntry(w) {
   let state = "watching";
-  if (w.error || w.status === "login") state = "attention";
+  const tone = w.insight?.tone;
+  if (w.error || w.status === "login" || tone === "problem" || tone === "action") state = "attention";
   else if (w.status === "done") state = "done";
   else if (watcherNeedsAttention(w)) state = "attention";
-  else if (w.status === "pending") state = "pending";
+  else if (w.status === "pending" || tone === "waiting") state = "pending";
 
+  const insight = w.insight;
   let text, quoted = false;
   if (w.error) text = WATCHER_LABEL.error;
-  else if (w.status === "login" || w.mode === "keyword") text = WATCHER_LABEL[w.status] || "Not checked yet";
+  else if (w.status === "login") text = WATCHER_LABEL.login;
+  else if (insight?.stage) text = watcherInsightLine(insight);
+  else if (w.mode === "keyword") text = WATCHER_LABEL[w.status] || "Not checked yet";
   else [text, quoted] = [w.current ?? "", true];
 
-  return { name: w.name, text, quoted, state, since: w.since || 0, checked: w.checked || 0 };
+  return {
+    name: w.name, text, quoted, state, since: w.since || 0, checked: w.checked || 0,
+    kind: w.kind || "general", step: insight?.step || 0, steps: insight?.steps || 0,
+  };
 }
 
 // MARK: Check run
@@ -288,7 +295,9 @@ function watcherClassify(body, w) {
   const low = scope.toLowerCase();
   const has = (phrases) => (phrases || []).some((p) => p && low.includes(p.toLowerCase()));
   const status = has(w.pending) ? "pending" : has(w.done) ? "done" : "changed";
-  return { status, hash: watcherHash(scope) };
+  // With a heading to look under, the text there can be read for what it means.
+  const insight = w.anchor ? watcherInterpret(w.kind, scope.slice(0, 500)) : null;
+  return { status, hash: watcherHash(scope), insight };
 }
 
 /** djb2 */
@@ -316,6 +325,9 @@ function watcherApply(w, result, now, settings) {
     }
     return;
   }
+  // Watches from before Helm understood pages get their kind worked out now.
+  if (!w.kind) w.kind = watcherRecognize({ url: w.url, title: w.name, text: result.text ?? (w.pending || []).join(" ") }).kind;
+
   // Coming back from being signed out, compare against the status before it.
   const previous = w.status === "login" ? w.beforeLogin : w.status;
   delete w.beforeLogin;
@@ -332,16 +344,27 @@ function watcherApply(w, result, now, settings) {
     if (first || previous !== result.status) w.since = now;
     w.status = result.status;
     w.hash = result.hash;
+    if (result.insight) w.insight = result.insight;
     return;
   }
 
+  // Read the text as the kind of thing it is, and only speak up when what it
+  // means changed: a new stage, an outcome, a new date, price or position.
+  const insight = watcherInterpret(w.kind, result.text);
+  const signature = watcherSignature(insight, result.text);
   if (result.text !== w.current) {
-    watcherNotify(w, `“${watcherClip(w.current)}” → “${watcherClip(result.text)}”`, settings);
+    const before = w.insight || watcherInterpret(w.kind, w.current);
+    const beforeSignature = w.signature ?? watcherSignature(before, w.current);
+    if (signature !== beforeSignature) {
+      watcherNotify(w, watcherDescribeChange(before, insight, w.current, result.text), settings);
+      w.unseen = true;
+      w.since = now;
+    }
     w.current = result.text;
-    w.unseen = true;
-    w.since = now;
   }
-  w.status = watcherIsDone(w.current, w.done) ? "done" : "watching";
+  w.insight = insight;
+  w.signature = signature;
+  w.status = watcherIsDone(w.current, w.done) || insight.tone === "done" ? "done" : "watching";
 }
 
 function watcherClip(text) {

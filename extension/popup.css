@@ -84,3 +84,10 @@ form > button[type=submit] { margin-top: 10px; }
 details { margin-top: 8px; }
 #watcher-settings { margin-top: 0; }
 summary { cursor: pointer; font-weight: 600; }
+
+.understood { margin: 4px 0 0; font-size: 12px; }
+.list .raw { color: #57606a; font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
+.steps { display: flex; gap: 3px; margin-top: 5px; max-width: 200px; }
+.steps span { flex: 1; height: 4px; border-radius: 2px; background: #ddd; }
+.steps span.on { background: #1a7f37; }
+.steps.waiting span.on { background: #9a6700; }

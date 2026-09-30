@@ -4,7 +4,7 @@
   "description": "Dev-only tests for Helm's browser extension. Not part of the extension.",
   "type": "module",
   "scripts": {
-    "test": "playwright test"
+    "test": "node --test understand.test.cjs && playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0"

@@ -48,5 +48,15 @@ function watcherIsDone(text, done) {
 /** Whether a watch should be counted on the badge and shown as an update. */
 function watcherNeedsAttention(w) {
   if (w.unseen || w.error || w.status === "login") return true;
+  if (w.insight && ["problem", "action"].includes(w.insight.tone)) return true;
   return w.mode === "keyword" && ["done", "changed", "missing"].includes(w.status);
+}
+
+/** "Out for delivery · Thursday", "Waitlisted · position 12", "₹1,499 · In stock". */
+function watcherInsightLine(insight) {
+  const parts = [insight.stage];
+  if (insight.kind === "product" && insight.price && insight.stage !== insight.price.text) parts.unshift(insight.price.text);
+  if (insight.date && insight.tone !== "done") parts.push(insight.date);
+  if (insight.position != null && insight.tone !== "done") parts.push(`position ${insight.position}`);
+  return parts.filter(Boolean).join(" · ");
 }

@@ -48,6 +48,29 @@ Under More options you can say what counts as done (like `Delivered`), limit a
 text watch to the part of the page below a heading, and give slow pages longer
 to load.
 
+**Helm understands what it's watching.** When you add a watch, Helm works out
+what kind of thing it is from the site, the address and the wording, and shows
+it in the popup (you can change it): a delivery, an app review, an access
+request, a visa or government application, a job application, results or
+admission, a booking or waitlist, a refund or claim, a support ticket, a build,
+or a product's price and stock. Anything else is watched as general text.
+
+Knowing the kind, Helm reads the status like a person would:
+
+- which step it's at (📦 Ordered → Shipped → On the way → Out for delivery →
+  Delivered), shown as a progress bar in the popup and on the screensaver
+- when it's finished, without you typing a "done" phrase
+- when something went wrong (rejected, delivery failed, build failed) or it's
+  waiting on you (more documents needed, awaiting your reply)
+- delivery dates, prices and waitlist positions, and ignores wording like
+  "not delivered yet"
+
+It only tells you about changes that mean something: a new stage, an outcome,
+a new date, a price drop or a waitlist move, and not "updated 5 min ago"
+ticking over. Alerts say what happened, like "📦 Out for delivery (was On the
+way)" or "Price dropped from ₹1,999 to ₹1,499". All of this runs in the
+extension; page text never leaves your browser.
+
 **Examples.**
 
 - Amazon order: open the order details or Track package page (not the order
@@ -83,7 +106,7 @@ Send test checks it works. This is the extension's only network request.
 **Tests** (dev only):
 
 ```sh
-cd tests/extension && npm install && npx playwright install chromium && npm test
+cd tests/extension && npm install && npx playwright install chromium && npm test   # unit + browser tests
 ```
 
 ## Screenshot
