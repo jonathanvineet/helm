@@ -1,0 +1,12 @@
+{
+  "name": "helm-extension-tests",
+  "private": true,
+  "description": "Dev-only tests for Helm's browser extension. Not part of the extension.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}

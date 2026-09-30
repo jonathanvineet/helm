@@ -91,6 +91,7 @@ final class SyncEngine: ObservableObject {
         let notes = NotesReader.read(folder: settings.notesFolder, limit: 24)
         board.notes = notes.notes
         board.notesError = notes.error
+        if settings.showWatches { board.watches = BoardWatch.load() }
 
         let lists = store.calendars(for: .reminder).map(\.title).sorted()
         if EKEventStore.authorizationStatus(for: .reminder) == .fullAccess {

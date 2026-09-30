@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Helm</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1 class="app-title">Helm</h1>
+
+  <section id="watcher" aria-labelledby="watcher-title">
+    <header class="row">
+      <h2 id="watcher-title">Watching</h2>
+      <button type="button" id="watcher-check-now">Check now</button>
+    </header>
+
+    <p id="watcher-next" class="muted next"></p>
+    <ul id="watcher-list" class="list"></ul>
+    <p id="watcher-empty" class="muted" hidden>Nothing is being watched yet.</p>
+
+    <form id="watcher-form" novalidate>
+      <h2>Watch this page</h2>
+      <p class="muted">First select the status text on the page, like “Arriving Thursday” or “Review in progress”, then open this popup.</p>
+
+      <fieldset>
+        <legend>Tell me when</legend>
+        <label class="choice"><input type="radio" name="mode" value="change" checked> the selected part changes</label>
+        <label class="choice"><input type="radio" name="mode" value="keyword"> some text disappears from the page</label>
+      </fieldset>
+
+      <p id="watcher-preview" class="preview"></p>
+
+      <label for="watcher-name">Name</label>
+      <input id="watcher-name" name="name" maxlength="40" required>
+
+      <label for="watcher-url">Page address</label>
+      <input id="watcher-url" name="url" type="url" required>
+
+      <div id="watcher-pending-field" hidden>
+        <label for="watcher-pending">Text shown while waiting</label>
+        <input id="watcher-pending" name="pending">
+      </div>
+
+      <details>
+        <summary>More options</summary>
+        <label for="watcher-done">Mark as done when it says</label>
+        <input id="watcher-done" name="done" placeholder="Optional, like Delivered">
+
+        <div id="watcher-anchor-field" hidden>
+          <label for="watcher-anchor">Only look below this heading</label>
+          <input id="watcher-anchor" name="anchor" placeholder="Optional">
+        </div>
+
+        <label for="watcher-wait">Seconds to let the page load</label>
+        <input id="watcher-wait" name="wait" type="number" min="2" max="60" value="8">
+
+        <p class="muted">Use | to separate alternatives, like Approved | Rejected.</p>
+      </details>
+
+      <p id="watcher-error" class="error" role="alert"></p>
+      <button type="submit">Start watching</button>
+    </form>
+
+    <details id="watcher-settings">
+      <summary>Settings</summary>
+
+      <label for="watcher-minutes">Check every</label>
+      <select id="watcher-minutes">
+        <option value="5">5 min</option>
+        <option value="15">15 min</option>
+        <option value="30">30 min</option>
+        <option value="60">1 hour</option>
+        <option value="180">3 hours</option>
+        <option value="360">6 hours</option>
+      </select>
+
+      <fieldset>
+        <legend>Desktop pop-ups</legend>
+        <label class="choice"><input type="radio" name="alerts" value="off"> Off, just update the badge</label>
+        <label class="choice"><input type="radio" name="alerts" value="quiet"> Quiet, disappear on their own</label>
+        <label class="choice"><input type="radio" name="alerts" value="sticky"> Stay until I dismiss them</label>
+      </fieldset>
+
+      <label for="watcher-ntfy">Phone alerts (ntfy topic)</label>
+      <div class="row">
+        <input id="watcher-ntfy" placeholder="Optional">
+        <button type="button" id="watcher-test-phone">Send test</button>
+      </div>
+      <p class="muted">Install the ntfy app and subscribe to the same topic. Anyone who knows the topic name can read your alerts, so make it hard to guess.</p>
+    </details>
+  </section>
+
+  <script src="watcher/shared.js"></script>
+  <script src="watcher/popup.js"></script>
+</body>
+</html>

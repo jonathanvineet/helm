@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Order 123</title></head>
+<body>
+  <h1>Your order</h1>
+  <p id="status"></p>
+  <div>
+    <section>
+      <div>
+        <p>Carrier</p>
+        <p><span>Shipped with Blue Dart</span></p>
+      </div>
+    </section>
+  </div>
+  <script>
+    // Text comes from ?s=…; the server fills in the default so tests can change it.
+    const s = new URLSearchParams(location.search).get("s");
+    document.getElementById("status").textContent = s ?? "__DEFAULT__";
+  </script>
+</body>
+</html>

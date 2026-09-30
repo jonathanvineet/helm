@@ -9,6 +9,8 @@ if let i = args.firstIndex(of: "--write-iconset"), i + 1 < args.count {
     MainActor.assumeIsolated { Logo.writeIconset(to: args[i + 1]) }
     exit(0)
 }
+// Started by Brave/Chrome for Helm's browser extension: handle one message and exit.
+if NativeHost.isInvocation(args) { NativeHost.run() }
 
 let app = NSApplication.shared
 let delegate = MainActor.assumeIsolated { AppDelegate() }
@@ -46,6 +48,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         engine.start()
         log("Helm started")
+        NativeHost.install()
+        DistributedNotificationCenter.default().addObserver(forName: NativeHost.changed, object: nil, queue: .main) { [engine] _ in
+            MainActor.assumeIsolated { engine.syncNow() }
+        }
         unquarantineSaver()
         firstLaunch()
     }

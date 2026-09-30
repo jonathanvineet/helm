@@ -10,6 +10,9 @@ struct Board: Codable {
     var done: [BoardTask] = []
     var notesError: String?
     var remindersError: String?
+    /// Pages Helm's browser extension is watching. Optional so a board.json
+    /// written by an older Helm still decodes.
+    var watches: [BoardWatch]?
 
     /// Inside the screensaver's sandbox container: Helm.app can write there and
     /// the sandboxed saver can read it. Built from the real home directory so
@@ -68,6 +71,75 @@ struct NoteLine: Codable, Hashable {
     var indent = 0
 }
 
+/// A page the browser extension is watching (extension/watcher), as shown on the board.
+struct BoardWatch: Codable {
+    enum State: String, Codable {
+        case attention, pending, watching, done
+    }
+
+    var name: String
+    var text: String  // the watched text, or a status like "Still in review"
+    var quoted = false  // `text` is the page's own words
+    var state: State
+    var since: Date?
+    var checked: Date?
+
+    init(name: String, text: String, quoted: Bool = false, state: State, since: Date? = nil, checked: Date? = nil) {
+        (self.name, self.text, self.quoted, self.state, self.since, self.checked) = (name, text, quoted, state, since, checked)
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        quoted = try c.decodeIfPresent(Bool.self, forKey: .quoted) ?? false
+        state = (try? c.decode(State.self, forKey: .state)) ?? .watching
+        since = try c.decodeIfPresent(Date.self, forKey: .since)
+        checked = try c.decodeIfPresent(Date.self, forKey: .checked)
+    }
+
+    /// Where the extension's latest watches are kept for Helm.app to read.
+    static var fileURL: URL {
+        let home = getpwuid(getuid()).map { String(cString: $0.pointee.pw_dir) } ?? NSHomeDirectory()
+        return URL(fileURLWithPath: home).appendingPathComponent("Library/Application Support/Helm/watches.json")
+    }
+
+    /// watches.json holds one list per browser profile (each has its own copy
+    /// of the extension), so profiles don't overwrite each other.
+    struct Store: Codable {
+        struct Source: Codable {
+            var updated: Date
+            var watches: [BoardWatch]
+        }
+        var sources: [String: Source] = [:]
+
+        static func read() -> Store {
+            guard let data = try? Data(contentsOf: BoardWatch.fileURL) else { return Store() }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return (try? decoder.decode(Store.self, from: data)) ?? Store()
+        }
+
+        func write() throws {
+            let url = BoardWatch.fileURL
+            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            try encoder.encode(self).write(to: url, options: .atomic)
+        }
+    }
+
+    /// Every profile's watches. A profile that hasn't reported in two weeks
+    /// (extension removed, profile deleted) is left out.
+    static func load() -> [BoardWatch] {
+        let cutoff = Date().addingTimeInterval(-14 * 86400)
+        return Store.read().sources.values
+            .filter { $0.updated > cutoff }
+            .sorted { $0.updated < $1.updated }
+            .flatMap(\.watches)
+    }
+}
+
 struct BoardTask: Codable {
     var title: String
     var list: String
@@ -87,6 +159,7 @@ struct HelmSettings: Codable, Equatable {
     var reminderLists: [String] = []  // empty = every list
     var showClock = true
     var use24Hour = false
+    var showWatches = true
 
     // Appearance
     var accentHex = "#34C759"
@@ -125,6 +198,7 @@ struct HelmSettings: Codable, Equatable {
         reminderLists = v(.reminderLists, d.reminderLists)
         showClock = v(.showClock, d.showClock)
         use24Hour = v(.use24Hour, d.use24Hour)
+        showWatches = v(.showWatches, d.showWatches)
         accentHex = v(.accentHex, d.accentHex)
         fontDesign = v(.fontDesign, d.fontDesign)
         textScale = v(.textScale, d.textScale)

@@ -128,6 +128,9 @@ struct SettingsView: View {
                 }
             }
         }
+        Section("Watched pages") {
+            Toggle("Show pages Helm's browser extension is watching", isOn: $engine.settings.showWatches)
+        }
         Section("Clock") {
             Toggle("Show clock", isOn: $engine.settings.showClock)
             Toggle("24-hour time", isOn: $engine.settings.use24Hour)

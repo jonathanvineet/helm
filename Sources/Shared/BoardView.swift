@@ -56,24 +56,46 @@ struct BoardView: View {
     @ViewBuilder
     private func content(base: CGFloat, width: CGFloat) -> some View {
         let gap = width * 0.025
-        switch (s.showNotes, s.showReminders) {
+        switch (s.showNotes, showSide) {
         case (true, true):
             HStack(alignment: .top, spacing: gap) {
                 if s.notesOnLeft {
                     notesGrid(base: base).frame(width: (width - gap) * 0.66)
-                    tasksPanel(base: base)
+                    sideColumn(base: base)
                 } else {
-                    tasksPanel(base: base).frame(width: (width - gap) * 0.34)
+                    sideColumn(base: base).frame(width: (width - gap) * 0.34)
                     notesGrid(base: base)
                 }
             }
         case (true, false):
             notesGrid(base: base)
         case (false, true):
-            tasksPanel(base: base).frame(maxWidth: width * 0.5)
+            sideColumn(base: base).frame(maxWidth: width * 0.5)
                 .frame(maxWidth: .infinity, alignment: s.notesOnLeft ? .trailing : .leading)
         case (false, false):
             Color.clear
+        }
+    }
+
+    private var watches: [BoardWatch] {
+        guard s.showWatches else { return [] }
+        let order: [BoardWatch.State] = [.attention, .pending, .watching, .done]
+        return (board?.watches ?? []).sorted { order.firstIndex(of: $0.state)! < order.firstIndex(of: $1.state)! }
+    }
+
+    private var showSide: Bool { s.showReminders || s.showWatches }
+
+    /// Reminders to show; with none, the To do panel shrinks to "All clear".
+    private var hasTasks: Bool {
+        !(board?.todo ?? []).isEmpty || (s.showDoneToday && !(board?.done ?? []).isEmpty) || board?.remindersError != nil
+    }
+
+    /// Reminders, with watched pages underneath.
+    private func sideColumn(base: CGFloat) -> some View {
+        VStack(spacing: base * 0.9) {
+            // Whichever panel has something in it takes the spare height.
+            if s.showReminders { tasksPanel(base: base, fill: hasTasks) }
+            if s.showWatches { watchesPanel(base: base, fill: !s.showReminders || !hasTasks) }
         }
     }
 
@@ -257,10 +279,11 @@ struct BoardView: View {
 
     // MARK: Reminders: what's left, and what got done today.
 
-    private func tasksPanel(base: CGFloat) -> some View {
+    private func tasksPanel(base: CGFloat, fill: Bool) -> some View {
         let todo = board?.todo ?? []
         let done = s.showDoneToday ? (board?.done ?? []) : []
         let total = todo.count + done.count
+        let maxTodo = !s.showWatches ? 7 : watches.isEmpty ? 5 : 3, maxDone = !s.showWatches ? 4 : watches.isEmpty ? 2 : 1
         return VStack(alignment: .leading, spacing: base * 0.7) {
             HStack(alignment: .firstTextBaseline) {
                 Text("TO DO")
@@ -291,11 +314,11 @@ struct BoardView: View {
             } else if todo.isEmpty {
                 Text("All clear").font(font(base * 1.2, .medium)).foregroundStyle(.white.opacity(0.85))
             }
-            ForEach(Array(todo.prefix(7).enumerated()), id: \.offset) { _, task in
+            ForEach(Array(todo.prefix(maxTodo).enumerated()), id: \.offset) { _, task in
                 taskRow(task, done: false, base: base)
             }
-            if todo.count > 7 {
-                Text("+ \(todo.count - 7) more").font(font(base * 0.9)).foregroundStyle(.white.opacity(0.55))
+            if todo.count > maxTodo {
+                Text("+ \(todo.count - maxTodo) more").font(font(base * 0.9)).foregroundStyle(.white.opacity(0.55))
             }
 
             if !done.isEmpty {
@@ -304,14 +327,16 @@ struct BoardView: View {
                     .tracking(base * 0.12)
                     .foregroundStyle(.white.opacity(0.6))
                     .padding(.top, base * 0.5)
-                ForEach(Array(done.prefix(4).enumerated()), id: \.offset) { _, task in
+                ForEach(Array(done.prefix(maxDone).enumerated()), id: \.offset) { _, task in
                     taskRow(task, done: true, base: base)
                 }
             }
-            Spacer(minLength: 0)
+            if fill { Spacer(minLength: 0) }
         }
+        .frame(minHeight: 0, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
+        .clipped()
         .padding(base * 1.4)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
         .glass(radius: base * 1.1, tint: s.panelOpacity)
     }
 
@@ -349,6 +374,72 @@ struct BoardView: View {
             when = due.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
         }
         return "\(task.list) · \(when)"
+    }
+
+    // MARK: Watched pages, from the browser extension
+
+    private func watchesPanel(base: CGFloat, fill: Bool) -> some View {
+        let updates = watches.filter { $0.state == .attention }.count
+        let maxWatches = fill ? 7 : 3
+        return VStack(alignment: .leading, spacing: base * 0.7) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("WAITING ON")
+                    .font(font(base * 0.8, .semibold))
+                    .tracking(base * 0.12)
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                if updates > 0 {
+                    Text(updates == 1 ? "1 update" : "\(updates) updates")
+                        .font(font(base * 0.85, .medium))
+                        .foregroundStyle(.orange)
+                }
+            }
+            if watches.isEmpty {
+                Text("Nothing yet").font(font(base * 1.2, .medium)).foregroundStyle(.white.opacity(0.85))
+                Text("Pages you watch with Helm's browser extension show up here, like an order or an app review.")
+                    .font(font(base * 0.9))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Array(watches.prefix(maxWatches).enumerated()), id: \.offset) { _, watch in
+                watchRow(watch, base: base)
+            }
+            if watches.count > maxWatches {
+                Text("+ \(watches.count - maxWatches) more").font(font(base * 0.9)).foregroundStyle(.white.opacity(0.55))
+            }
+            if fill { Spacer(minLength: 0) }
+        }
+        .padding(base * 1.4)
+        .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
+        .glass(radius: base * 1.1, tint: s.panelOpacity)
+    }
+
+    private func watchRow(_ watch: BoardWatch, base: CGFloat) -> some View {
+        let (icon, color): (String, Color) = switch watch.state {
+        case .attention: ("exclamationmark.circle.fill", .orange)
+        case .pending: ("hourglass.circle", .yellow)
+        case .watching: ("eye.circle", .white.opacity(0.8))
+        case .done: ("checkmark.circle.fill", accent)
+        }
+        var detail = watch.quoted ? "“\(watch.text)”" : watch.text
+        if let since = watch.since {
+            detail += " · " + since.formatted(.relative(presentation: .named))
+        }
+        return HStack(alignment: .firstTextBaseline, spacing: base * 0.7) {
+            Image(systemName: icon)
+                .font(.system(size: base * 1.1))
+                .foregroundStyle(color)
+            VStack(alignment: .leading, spacing: base * 0.1) {
+                Text(watch.name)
+                    .font(font(base * 1.15, .medium))
+                    .foregroundStyle(.white.opacity(watch.state == .done ? 0.7 : 0.95))
+                    .lineLimit(1)
+                Text(detail)
+                    .font(font(base * 0.8))
+                    .foregroundStyle(watch.state == .attention ? Color.orange : .white.opacity(0.55))
+                    .lineLimit(1)
+            }
+        }
     }
 
     // MARK: Footer

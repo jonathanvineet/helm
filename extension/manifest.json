@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Helm",
+  "version": "0.1.0",
+  "description": "Watches pages you're waiting on and tells you when they change.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoD7VFpE340JrSUwGK3j1RML7TfeYKR2h/HZ9wV70CEPbcuB0ZhHVzIKat8N63vl3jWMH0M3hlAJ5SZ4kZEAZC4KUrkCtawiExjpLI7v05TwVR2uUcbksKyOeJfSayVCr8H3HTMEkkRnvUscqn8F8LLJjBMyBQ/u3e8/JJUnNEu9c1o6k2aLjr/6QEFKhxDKg+CzgaCSHx1Bjduu6PbfnpdIa4wOrymt/QczXu2kKPOmH/Sy4ZVI5BO4RQ2wivh3bdYYy+34PS26RmFqzWsb8jLfzMREaQaH0QT9/TbteuARVw8gOuG5H4Y08Kp1dyENnmP/iS52PKOrZSC6u4hbaYwIDAQAB",
+  "permissions": [
+    "alarms",
+    "notifications",
+    "storage",
+    "scripting",
+    "tabs",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Helm",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
