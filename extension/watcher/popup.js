@@ -8,40 +8,6 @@ const watcherFresh = new Set();
 /** What was selected on the active tab when the popup opened, or null. */
 let watcherSelection = null;
 
-/** Injected into the active tab: describes the selected text and the element around it. */
-function watcherInspectSelection() {
-  const sel = getSelection();
-  const text = sel ? sel.toString().replace(/\s+/g, " ").trim() : "";
-  if (!text || !sel.rangeCount) return null;
-
-  let el = sel.getRangeAt(0).commonAncestorContainer;
-  if (el.nodeType === Node.TEXT_NODE) el = el.parentElement;
-  if (!el || el.nodeType !== Node.ELEMENT_NODE) return null;
-
-  const parts = [];
-  let fromId = false;
-  for (let node = el; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
-    // Ids with long digit runs are usually generated per page load.
-    if (node.id && !/\d{3,}/.test(node.id)) {
-      const idSelector = "#" + CSS.escape(node.id);
-      if (document.querySelectorAll(idSelector).length === 1) {
-        parts.unshift(idSelector);
-        fromId = true;
-        break;
-      }
-    }
-    let n = 1;
-    for (let s = node.previousElementSibling; s; s = s.previousElementSibling) {
-      if (s.tagName === node.tagName) n++;
-    }
-    parts.unshift(`${node.tagName.toLowerCase()}:nth-of-type(${n})`);
-  }
-  if (!fromId) parts.unshift("body");
-
-  const elText = (el.innerText || el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 300);
-  return { text, selector: parts.join(" > "), elText };
-}
-
 // MARK: Rendering
 
 function watcherAgo(ts) {
@@ -68,16 +34,18 @@ function watcherStatusLine(w) {
   return { text: `“${w.current ?? ""}”`, cls: w.status === "done" ? "done" : "" };
 }
 
-function watcherMetaLine(w) {
+function watcherMetaLine(w, minutes) {
   const checked = w.checked ? `checked ${watcherAgo(w.checked)}` : "not checked yet";
   const lead = w.mode === "keyword"
     ? (w.since ? `In this state since ${watcherAgo(w.since)}` : "")
     : `Last changed ${watcherAgo(w.since)}`;
   const kind = w.kind && w.kind !== "general" ? `${watcherKind(w.kind).label} · ` : "";
-  return kind + [lead, checked].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
+  const notes = [watcherIntervalNote(w, minutes)];
+  if (w.refound && Date.now() - w.refound < 7 * 86400000) notes.push("found again after the page changed");
+  return kind + [lead, checked, ...notes].filter(Boolean).join(", ").replace(/^./, (c) => c.toUpperCase());
 }
 
-function watcherRenderList(watches) {
+function watcherRenderList(watches, minutes) {
   const list = $("watcher-list");
   list.replaceChildren();
   $("watcher-empty").hidden = watches.length > 0;
@@ -133,7 +101,7 @@ function watcherRenderList(watches) {
 
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = watcherMetaLine(w);
+    meta.textContent = watcherMetaLine(w, minutes);
     li.append(meta);
 
     if (w.error) {
@@ -162,13 +130,18 @@ function watcherRenderSettings(state) {
 /** When the next automatic check is due, so it's clear checks are still happening. */
 async function watcherRenderNext(state, checking) {
   const line = $("watcher-next");
-  const alarm = await chrome.alarms.get("watcher-check");
-  if (!state.watches.length || !alarm) {
+  const now = Date.now();
+  // Each watch has its own pace; the next check is the soonest one due.
+  const next = Math.min(...state.watches.map((w) =>
+    w.checked ? w.checked + watcherInterval(w, state.minutes, now) * 60000 : now));
+  if (!state.watches.length) {
     line.textContent = "";
   } else if (checking) {
     line.textContent = "Checking your pages now";
+  } else if (next === Infinity) {
+    line.textContent = "Everything's finished. Check now looks again.";
   } else {
-    const min = Math.max(0, Math.round((alarm.scheduledTime - Date.now()) / 60000));
+    const min = Math.max(0, Math.round((next - now) / 60000));
     line.textContent = `Next check ${min < 1 ? "in under a minute" : `in ${min} min`}` +
       (state.lastRun ? `, last one ${watcherAgo(state.lastRun)}` : "");
   }
@@ -176,7 +149,7 @@ async function watcherRenderNext(state, checking) {
 
 async function watcherRender() {
   const state = await watcherLoadState();
-  watcherRenderList(state.watches);
+  watcherRenderList(state.watches, state.minutes);
   watcherRenderSettings(state);
 }
 
@@ -254,6 +227,8 @@ async function watcherSubmit(event, tab) {
     const insight = watcherInterpret(kind, watcherSelection.elText);
     Object.assign(w, {
       selector: watcherSelection.selector,
+      context: watcherSelection.context || null,
+      tag: watcherSelection.tag || null,
       baseline: watcherSelection.elText,
       current: watcherSelection.elText,
       since: Date.now(),
@@ -301,7 +276,8 @@ async function watcherInit() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (tab && /^https?:/.test(tab.url || "")) {
     try {
-      const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: watcherInspectSelection });
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["watcher/page.js"] });
+      const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => watcherInspectSelection() });
       watcherSelection = injection?.result ?? null;
     } catch {
       // Browser-internal and store pages can't be scripted.

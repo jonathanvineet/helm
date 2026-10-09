@@ -249,6 +249,52 @@ function watcherFindDate(text) {
   return date.charAt(0).toUpperCase() + date.slice(1);
 }
 
+const WATCHER_WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+const WATCHER_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+
+/**
+ * When something is due, as a moment: "Arriving today by 9 PM" → today 21:00;
+ * "Arriving Thursday" → the coming Thursday. Returns { at, hasTime } or null.
+ * `now` is passed in so tests can pin the clock.
+ */
+function watcherFindDue(text, now = Date.now()) {
+  const t = String(text ?? "").toLowerCase();
+  const phrase = (watcherFindDate(t) || "").toLowerCase();
+  const time = t.match(/\b(?:by|before|until|at|around)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/)
+    || t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  if (!phrase && !time) return null;
+
+  const day = new Date(now);
+  day.setHours(0, 0, 0, 0);
+  let known = false;
+  if (/\b(today|tonight)\b/.test(phrase)) {
+    known = true;
+  } else if (/\btomorrow\b/.test(phrase)) {
+    day.setDate(day.getDate() + 1);
+    known = true;
+  } else {
+    const month = WATCHER_MONTHS.findIndex((m) => new RegExp(`\\b${m}`).test(phrase));
+    const date = phrase.match(/\b(\d{1,2})(st|nd|rd|th)?\b/);
+    const weekday = WATCHER_WEEKDAYS.findIndex((d) => new RegExp(`\\b${d}`).test(phrase));
+    if (month >= 0 && date) {
+      day.setMonth(month, Number(date[1]));
+      // "3 Jan" seen in December means next year.
+      if (day.getTime() < now - 60 * 86400000) day.setFullYear(day.getFullYear() + 1);
+      known = true;
+    } else if (weekday >= 0) {
+      day.setDate(day.getDate() + ((weekday - day.getDay() + 7) % 7));
+      known = true;
+    }
+  }
+  if (!known && !time) return null;  // a date we couldn't place, like "12/10"
+  if (time) {
+    let hour = Number(time[1]) % 12;
+    if (time[3] === "pm") hour += 12;
+    day.setHours(hour, Number(time[2] || 0), 0, 0);
+  }
+  return { at: day.getTime(), hasTime: !!time };
+}
+
 /** "₹1,499", "$29.99", "Rs. 999", "EUR 45" → { text: "₹1,499", value: 1499 }. */
 function watcherFindPrice(text) {
   const m = String(text ?? "").match(/(₹|\$|€|£|¥|rs\.?|inr|usd|eur|gbp)\s?(\d{1,3}(,\d{2,3})+|\d+)(\.\d{1,2})?/i);
@@ -310,7 +356,7 @@ function watcherRecognize({ url = "", title = "", text = "" } = {}) {
  * tone: "waiting" (in progress), "done", "problem" (went wrong), "action"
  * (waiting on you), or "info" (couldn't tell).
  */
-function watcherInterpret(kindId, text) {
+function watcherInterpret(kindId, text, now = Date.now()) {
   const kind = watcherKind(kindId);
   const t = String(text ?? "").toLowerCase().replace(/\s+/g, " ");
   const insight = { kind: kind.id, stage: null, step: 0, steps: kind.stages.length, tone: "info",
@@ -355,6 +401,11 @@ function watcherInterpret(kindId, text) {
   } else if (reached >= 0) {
     insight.tone = "waiting";
   }
+  // When it's expected, for countdowns. Only for things still on their way.
+  if (insight.tone !== "done" && kind.id !== "product") {
+    const due = watcherFindDue(text, now);
+    if (due) [insight.due, insight.dueHasTime] = [due.at, due.hasTime];
+  }
   return insight;
 }
 
@@ -398,6 +449,6 @@ function watcherDescribeChange(before, after, oldText, newText) {
 if (typeof module !== "undefined") {
   module.exports = {
     WATCHER_KINDS, watcherKind, watcherRecognize, watcherInterpret, watcherSignature, watcherDescribeChange,
-    watcherFindDate, watcherFindPrice, watcherFindPosition, watcherFindStock, watcherStripNoise, watcherSays,
+    watcherFindDate, watcherFindDue, watcherFindPrice, watcherFindPosition, watcherFindStock, watcherStripNoise, watcherSays,
   };
 }

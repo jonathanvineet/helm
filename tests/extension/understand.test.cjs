@@ -149,3 +149,21 @@ test("describes changes like a person would", () => {
   assert.equal(d("booking", "GNWL 45 / WL 12", "GNWL 45 / WL 4"), "Moved up: position 12 → 4");
   assert.equal(d("general", "foo", "bar"), "“foo” → “bar”");
 });
+
+test("works out when things are due, for countdowns", () => {
+  const now = new Date(2026, 9, 5, 10, 0).getTime();  // Monday 5 Oct 2026, 10:00
+  const due = (text) => {
+    const d = u.watcherFindDue(text, now);
+    return d && [new Date(d.at).toDateString(), new Date(d.at).getHours(), new Date(d.at).getMinutes(), d.hasTime];
+  };
+  assert.deepEqual(due("Arriving today by 9 PM"), ["Mon Oct 05 2026", 21, 0, true]);
+  assert.deepEqual(due("Arriving Thursday"), ["Thu Oct 08 2026", 0, 0, false]);
+  assert.deepEqual(due("Arriving tomorrow"), ["Tue Oct 06 2026", 0, 0, false]);
+  assert.deepEqual(due("Expected delivery by 3 Oct"), ["Sat Oct 03 2026", 0, 0, false]);
+  assert.deepEqual(due("Delivery by Jan 3"), ["Sun Jan 03 2027", 0, 0, false]);  // next year
+  assert.deepEqual(due("Will arrive by 7:30 pm"), ["Mon Oct 05 2026", 19, 30, true]);
+  assert.equal(due("Out for delivery"), null);
+  // Finished things have nothing to count down to.
+  assert.equal(u.watcherInterpret("delivery", "Delivered today at 2 PM", now).due, undefined);
+  assert.equal(typeof u.watcherInterpret("delivery", "Arriving Thursday", now).due, "number");
+});

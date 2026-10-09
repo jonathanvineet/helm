@@ -1,7 +1,6 @@
-// Helm page watcher: the service worker half. Periodically reads each watched
-// page (in its open tab if there is one, else in one minimized window) and
-// records what changed.
-// Needs watcher/shared.js loaded first.
+// Helm page watcher: the service worker half. Reads each watched page when
+// it's due (in its open tab if there is one, else in one minimized window) and
+// records what changed. Needs watcher/shared.js and watcher/understand.js.
 
 const WATCHER_ALARM = "watcher-check";
 const WATCHER_LOGIN_MARKERS = ["login", "signin", "sign-in", "authwall", "accounts.google.com", "idmsa.apple.com", "/ap/signin"];
@@ -13,10 +12,10 @@ const watcherSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // MARK: Scheduling
 
+/** A tick every minute; each tick checks only the watches that are due (see watcherInterval). */
 async function watcherSchedule() {
-  const { minutes } = await watcherLoadState();
   await chrome.alarms.clear(WATCHER_ALARM);
-  await chrome.alarms.create(WATCHER_ALARM, { delayInMinutes: 1, periodInMinutes: minutes });
+  await chrome.alarms.create(WATCHER_ALARM, { delayInMinutes: 1, periodInMinutes: 1 });
 }
 
 async function watcherStartup() {
@@ -28,12 +27,32 @@ async function watcherStartup() {
 
 chrome.runtime.onInstalled.addListener(watcherStartup);
 chrome.runtime.onStartup.addListener(watcherStartup);
-// If the alarm has gone missing, checks would silently stop; put it back.
-chrome.alarms.get(WATCHER_ALARM).then((alarm) => { if (!alarm) watcherSchedule(); });
+// If the alarm has gone missing (or is from before the one-minute tick), put it back.
+chrome.alarms.get(WATCHER_ALARM).then((alarm) => { if (!alarm || alarm.periodInMinutes !== 1) watcherSchedule(); });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === WATCHER_ALARM) watcherRunChecks();
+  if (alarm.name === WATCHER_ALARM) watcherRunChecks({ onlyDue: true });
 });
+
+// Switching to a watched page's tab, or reloading it, checks it right there.
+chrome.tabs.onActivated.addListener(({ tabId }) => watcherCheckOpenedTab(tabId, 0));
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.status === "complete" && tab.active) watcherCheckOpenedTab(tabId, null);
+});
+
+async function watcherCheckOpenedTab(tabId, wait) {
+  if (watcherRunning) return;  // a check run is driving tabs itself
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab?.url || !/^https?:/.test(tab.url)) return;
+  const { watches } = await watcherLoadState();
+  const now = Date.now();
+  // Not again within a minute: switching back and forth shouldn't hammer the page.
+  const matching = watches.filter((w) => watcherSameUrl(tab.url, w.url) && (!w.checked || now - w.checked > 60000));
+  for (const w of matching) {
+    if (wait !== 0) await watcherSleep(Math.min(60, Math.max(2, Number(wait ?? w.wait) || 8)) * 1000);
+    await watcherCheckInTab(w.id, tabId);
+  }
+}
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
@@ -45,7 +64,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 chrome.runtime.onMessage.addListener((message) => {
-  if (message?.type === "watcher:checkNow") watcherRunChecks();
+  if (message?.type === "watcher:checkNow") watcherRunChecks();  // everything, finished ones too
   if (message?.type === "watcher:checkTab") watcherCheckInTab(message.id, message.tabId);
   if (message?.type === "watcher:testPhone") {
     watcherLoadState().then(({ ntfy }) =>
@@ -128,24 +147,33 @@ function watcherBoardEntry(w) {
   let text, quoted = false;
   if (w.error) text = WATCHER_LABEL.error;
   else if (w.status === "login") text = WATCHER_LABEL.login;
-  else if (insight?.stage) text = watcherInsightLine(insight);
+  // With a known arrival time the board shows a live countdown instead of the date.
+  else if (insight?.stage) text = watcherInsightLine(insight, { date: !insight.due });
   else if (w.mode === "keyword") text = WATCHER_LABEL[w.status] || "Not checked yet";
   else [text, quoted] = [w.current ?? "", true];
 
   return {
     name: w.name, text, quoted, state, since: w.since || 0, checked: w.checked || 0,
     kind: w.kind || "general", step: insight?.step || 0, steps: insight?.steps || 0,
+    url: w.url, due: insight?.tone === "done" ? 0 : insight?.due || 0, dueHasTime: !!insight?.dueHasTime,
+    finished: w.status === "done" ? w.finishedAt || 0 : 0,
   };
 }
 
 // MARK: Check run
 
-async function watcherRunChecks() {
+async function watcherRunChecks({ onlyDue = false } = {}) {
   if (watcherRunning) return;
-  const { watches } = await watcherLoadState();
-  if (!watches.length) return;
-
+  // Claimed before the first await, so a timer tick and Check now can't both start a run.
   watcherRunning = true;
+  const { watches: all, minutes } = await watcherLoadState();
+  const now = Date.now();
+  const watches = onlyDue ? all.filter((w) => watcherIsDue(w, minutes, now)) : all;
+  if (!watches.length) {
+    watcherRunning = false;
+    return;
+  }
+
   await chrome.storage.local.set({ [WATCHER_KEY.checkingSince]: Date.now() });
   // Chrome stops an idle service worker after 30 s; a check run takes longer.
   const keepAlive = setInterval(() => chrome.runtime.getPlatformInfo(), 20000);
@@ -237,7 +265,21 @@ async function watcherCheck(tabId, w, { navigate = true, reload = false } = {}) 
     await watcherSleep(5000);
     text = await watcherRun(tabId, watcherReadSelector, [w.selector]);
   }
-  return { status: "read", text: text === null ? "(no longer on the page)" : watcherNormalize(text) };
+  if (text === null) {
+    // The page was probably redesigned: look for the status again.
+    const found = await watcherFindAgain(tabId, w);
+    if (found) return { status: "read", text: watcherNormalize(found.text), selector: found.selector };
+  }
+  return { status: "read", text: text === null ? WATCHER_GONE : watcherNormalize(text) };
+}
+
+const WATCHER_GONE = "(no longer on the page)";
+
+/** Runs watcher/page.js's search for a status whose selector broke. */
+async function watcherFindAgain(tabId, w) {
+  await chrome.scripting.executeScript({ target: { tabId }, files: ["watcher/understand.js", "watcher/page.js"] });
+  const lastText = w.current && w.current !== WATCHER_GONE ? w.current : w.baseline;
+  return watcherRun(tabId, (args) => watcherHeal(args), [{ lastText, context: w.context || null, kind: w.kind, tag: w.tag || null }]);
 }
 
 /** Same page, ignoring the #fragment and a trailing slash. */
@@ -342,10 +384,15 @@ function watcherApply(w, result, now, settings) {
       w.unseen = true;
     }
     if (first || previous !== result.status) w.since = now;
-    w.status = result.status;
+    watcherSetStatus(w, result.status, now);
     w.hash = result.hash;
     if (result.insight) w.insight = result.insight;
     return;
+  }
+
+  if (result.selector && result.selector !== w.selector) {
+    w.selector = result.selector;
+    w.refound = now;
   }
 
   // Read the text as the kind of thing it is, and only speak up when what it
@@ -364,7 +411,14 @@ function watcherApply(w, result, now, settings) {
   }
   w.insight = insight;
   w.signature = signature;
-  w.status = watcherIsDone(w.current, w.done) || insight.tone === "done" ? "done" : "watching";
+  watcherSetStatus(w, watcherIsDone(w.current, w.done) || insight.tone === "done" ? "done" : "watching", now);
+}
+
+/** Sets the status, remembering when a watch finished (for the board's celebration). */
+function watcherSetStatus(w, status, now) {
+  if (status === "done" && w.status !== "done") w.finishedAt = now;
+  if (status !== "done") delete w.finishedAt;
+  w.status = status;
 }
 
 function watcherClip(text) {
@@ -386,6 +440,18 @@ function watcherNotify(w, message, { alerts, ntfy }) {
     });
   }
   watcherPushToPhone(ntfy, w.name, message, w.url);
+  watcherNotifyMac(w, message);
+}
+
+/** Hands the alert to Helm.app, which shows it as a Mac notification. */
+async function watcherNotifyMac(w, message) {
+  try {
+    await chrome.runtime.sendNativeMessage(WATCHER_NATIVE_HOST, {
+      type: "watcher:notify", id: w.id, title: w.name, message, url: w.url, kind: w.kind || "general",
+    });
+  } catch {
+    // Helm.app isn't installed.
+  }
 }
 
 /** JSON publishing, because ntfy's header form breaks on non-ASCII titles. */

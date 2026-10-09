@@ -44,7 +44,15 @@ test.afterAll(async () => {
 
 test.beforeEach(async () => {
   served = "Arriving Thursday";
-  await sw.evaluate(() => chrome.storage.local.clear());
+  await sw.evaluate(() => {
+    // Never reach the real Helm.app on this Mac (it registers itself with every
+    // Chromium browser); record what would have been sent instead.
+    self.sentToHelm = [];
+    chrome.runtime.sendNativeMessage = async (host, message) => { self.sentToHelm.push({ host, message }); return { ok: true }; };
+    // Tests start check runs themselves; the once-a-minute tick would race them.
+    chrome.alarms.clearAll();
+    return chrome.storage.local.clear();
+  });
 });
 
 const setWatches = (watches) => sw.evaluate((w) => chrome.storage.local.set({ watcher_watches: w }), watches);
@@ -72,7 +80,8 @@ test("selection inspector returns selectors that resolve to the selected element
 
   const inspect = () => popup.evaluate(async (url) => {
     const tab = (await chrome.tabs.query({})).find((t) => t.url === url);
-    const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: watcherInspectSelection });
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["watcher/page.js"] });
+    const [injection] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => watcherInspectSelection() });
     return injection.result;
   }, page.url());
 
@@ -138,8 +147,31 @@ test("change mode detects a text change and marks it unseen", async () => {
   expect(state.watcher_lastRun).toBeGreaterThan(0);
 });
 
-test("change mode reports an element that disappeared", async () => {
-  await setWatches([changeWatch("gone", { selector: "#nope" })]);
+test("a broken selector is found again by its last text", async () => {
+  await setWatches([changeWatch("moved", { selector: "#nope" })]);
+  await runChecks();
+  const [w] = await getWatches();
+  expect(w.selector).toBe("#status");
+  expect(w.current).toBe("Arriving Thursday");
+  expect(w.refound).toBeGreaterThan(0);
+  expect(w.unseen).toBeFalsy();  // same text, nothing to tell
+});
+
+test("after a redesign the status is found near its label, by its wording", async () => {
+  served = "Out for delivery";
+  await setWatches([changeWatch("redesigned", {
+    selector: "#old-status", kind: "delivery", context: "Your order", tag: "p", current: "In transit", baseline: "In transit", done: [],
+  })]);
+  await runChecks();
+  const [w] = await getWatches();
+  expect(w.selector).toBe("#status");
+  expect(w.current).toBe("Out for delivery");
+  expect(w.unseen).toBe(true);
+  expect(w.insight.stage).toBe("Out for delivery");
+});
+
+test("a status that's really gone is reported as gone", async () => {
+  await setWatches([changeWatch("gone", { selector: "#nope", current: "Zebra crossing permit", baseline: "Zebra crossing permit" })]);
   await runChecks();
   const [w] = await getWatches();
   expect(w.current).toBe("(no longer on the page)");
@@ -263,10 +295,6 @@ test("the form adds a keyword watch and checks it right away", async () => {
 });
 
 test("watch changes are sent to Helm.app for the screensaver board", async () => {
-  await sw.evaluate(() => {
-    self.sentToHelm = [];
-    chrome.runtime.sendNativeMessage = async (host, message) => { self.sentToHelm.push({ host, message }); return { ok: true }; };
-  });
   await setWatches([
     changeWatch("order", { unseen: true, current: "Out for delivery" }),
     { ...changeWatch("review"), mode: "keyword", status: "pending", since: 1000, checked: 2000 },
@@ -376,4 +404,55 @@ test("an older watch without a kind gets one on its next check", async () => {
   const [w] = await getWatches();
   expect(w.kind).toBe("appReview");
   expect(w.insight.stage).toBe("In review");
+});
+
+test("checks only what's due: often when nearly there, not at all when finished", async () => {
+  const now = Date.now();
+  const due = await sw.evaluate((now) => {
+    const base = 30;
+    const at = (insight, extra = {}) => ({ checked: now - 6 * 60000, since: now - 3600000, status: "watching", insight, ...extra });
+    return {
+      nearly: watcherIsDue(at({ tone: "waiting", step: 4, steps: 5 }), base, now),         // out for delivery: every 5 min
+      middling: watcherIsDue(at({ tone: "waiting", step: 2, steps: 5 }), base, now),       // every 30 min
+      finished: watcherInterval({ status: "done" }, base, now),
+      quiet: watcherInterval(at({ tone: "waiting", step: 2, steps: 5 }, { since: now - 8 * 86400000 }), base, now),
+      dueSoon: watcherInterval(at({ tone: "waiting", step: 2, steps: 5, due: now + 3600000 }), base, now),
+    };
+  }, now);
+  expect(due).toEqual({ nearly: true, middling: false, finished: Infinity, quiet: 120, dueSoon: 5 });
+});
+
+test("a scheduled tick checks only due watches", async () => {
+  const now = Date.now();
+  await setWatches([
+    changeWatch("due", { checked: now - 31 * 60000 }),
+    changeWatch("not-due", { checked: now - 60000 }),
+    changeWatch("finished", { status: "done", checked: now - 99 * 60000 }),
+  ]);
+  await sw.evaluate(() => watcherRunChecks({ onlyDue: true }));
+  const checked = Object.fromEntries((await getWatches()).map((w) => [w.id, w.checked > now]));
+  expect(checked).toEqual({ due: true, "not-due": false, finished: false });
+});
+
+test("switching to a watched page's tab checks it there", async () => {
+  await setWatches([changeWatch("focus")]);
+  const page = await context.newPage();
+  served = "Out for delivery";
+  await page.goto(`${base}/order`);
+  await page.bringToFront();
+  await expect.poll(async () => (await getWatches())[0].current, { timeout: 15000 }).toBe("Out for delivery");
+  await page.close();
+});
+
+test("alerts are also handed to Helm.app for Mac notifications", async () => {
+  await setWatches([changeWatch("mac", { kind: "delivery", done: [] })]);
+  served = "Out for delivery";
+  await runChecks();
+  const notes = await sw.evaluate(() => self.sentToHelm.filter((m) => m.message.type === "watcher:notify").map((m) => m.message));
+  expect(notes).toEqual([expect.objectContaining({ id: "mac", title: "mac", message: "📦 Out for delivery (was On the way)", kind: "delivery" })]);
+  const board = await sw.evaluate(() => watcherBoardEntry({
+    name: "x", url: "https://x", mode: "change", kind: "delivery", status: "done", finishedAt: 123,
+    insight: { stage: "Delivered", tone: "done", step: 5, steps: 5 },
+  }));
+  expect(board).toMatchObject({ url: "https://x", finished: 123, due: 0, state: "done" });
 });

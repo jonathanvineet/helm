@@ -11,6 +11,8 @@ enum NativeHost {
     /// Fixed by the `key` in extension/manifest.json.
     static let extensionID = "popaljneofbfhillkaogepicefmnmdll"
     static let changed = Notification.Name("com.jonathanvineet.helm.watchesChanged")
+    /// An alert about a watch, for the running Helm.app to show as a Mac notification.
+    static let alert = Notification.Name("com.jonathanvineet.helm.watchAlert")
 
     /// Browsers start the host with the calling extension's origin as an argument.
     static func isInvocation(_ args: [String]) -> Bool {
@@ -27,12 +29,24 @@ enum NativeHost {
             exit(1)
         }
         var ok = false
-        if let message = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-           message["type"] as? String == "watcher:board",
-           let raw = message["watches"] as? [[String: Any]] {
+        let message = (try? JSONSerialization.jsonObject(with: body)) as? [String: Any] ?? [:]
+        switch message["type"] as? String {
+        case "watcher:board":
+            guard let raw = message["watches"] as? [[String: Any]] else { break }
             let source = (message["source"] as? String).map { String($0.prefix(64)) } ?? "default"
             ok = (try? save(raw.compactMap(BoardWatch.init(message:)), from: source)) != nil
             if ok { DistributedNotificationCenter.default().postNotificationName(changed, object: nil, deliverImmediately: true) }
+        case "watcher:notify":
+            func text(_ key: String, _ limit: Int) -> String { String((message[key] as? String ?? "").prefix(limit)) }
+            let url = text("url", 2000)
+            let info: [String: String] = [
+                "title": text("title", 80), "message": text("message", 300), "kind": text("kind", 20),
+                "url": url.hasPrefix("https://") || url.hasPrefix("http://") ? url : "",
+            ]
+            DistributedNotificationCenter.default().postNotificationName(alert, object: nil, userInfo: info, deliverImmediately: true)
+            ok = true
+        default:
+            break
         }
         reply(["ok": ok])
         exit(0)
@@ -102,5 +116,9 @@ extension BoardWatch {
                   kind: String((m["kind"] as? String ?? "general").prefix(20)),
                   step: max(0, min(20, m["step"] as? Int ?? 0)),
                   steps: max(0, min(20, m["steps"] as? Int ?? 0)))
+        if let url = m["url"] as? String, url.hasPrefix("http") { self.url = String(url.prefix(2000)) }
+        due = date("due")
+        dueHasTime = m["dueHasTime"] as? Bool ?? false
+        finished = date("finished")
     }
 }

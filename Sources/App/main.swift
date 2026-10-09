@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // Helm.app: menu bar agent. Keeps the screensaver's notes/reminders board in
@@ -24,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var statusItem: NSStatusItem!
     private var statusLine: NSMenuItem!
     private var settingsWindow: NSWindow?
+    private lazy var alerts = WatchAlerts(engine: engine)
+    private var watchItems: [NSMenuItem] = []
+    private var boardObserver: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -52,8 +56,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         DistributedNotificationCenter.default().addObserver(forName: NativeHost.changed, object: nil, queue: .main) { [engine] _ in
             MainActor.assumeIsolated { engine.syncNow() }
         }
+        alerts.start()
+        // Keep the menu bar count of watches that need you current.
+        boardObserver = engine.$board.receive(on: DispatchQueue.main).sink { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateStatusCount() }
+        }
         unquarantineSaver()
         firstLaunch()
+    }
+
+    // MARK: Watched pages in the menu bar
+
+    private func updateStatusCount() {
+        let count = BoardWatch.load().filter { $0.state == .attention }.count
+        statusItem.button?.title = count > 0 ? " \(count)" : ""
+        statusItem.button?.imagePosition = .imageLeading
+        statusItem.button?.toolTip = count > 0 ? "Helm: \(count) watched page\(count == 1 ? "" : "s") need\(count == 1 ? "s" : "") you" : "Helm"
+    }
+
+    /// "Waiting on" items at the top of the menu; choosing one opens the page.
+    private func rebuildWatchItems(in menu: NSMenu) {
+        watchItems.forEach(menu.removeItem)
+        watchItems = []
+        let now = Date()
+        let order: [BoardWatch.State] = [.attention, .pending, .watching, .done]
+        let watches = BoardWatch.load()
+            .filter { !$0.stale(now: now) }
+            .sorted { order.firstIndex(of: $0.state)! < order.firstIndex(of: $1.state)! }
+        guard !watches.isEmpty else { return }
+
+        var items: [NSMenuItem] = []
+        let header = NSMenuItem(title: "Waiting on", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        items.append(header)
+        for watch in watches.prefix(12) {
+            var detail = watch.quoted ? "“\(watch.text)”" : watch.text
+            if let countdown = watch.countdown(now: now) { detail += " · " + countdown }
+            let mark = watch.state == .attention ? "⚠︎ " : watch.state == .done ? "✓ " : ""
+            let item = NSMenuItem(title: "\(BoardWatch.emoji(watch.kind))  \(watch.name) — \(mark)\(detail)",
+                                  action: #selector(openWatch(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = watch.url
+            item.isEnabled = watch.url != nil
+            items.append(item)
+        }
+        items.append(.separator())
+        for (offset, item) in items.enumerated() { menu.insertItem(item, at: 2 + offset) }
+        watchItems = items
+    }
+
+    @objc private func openWatch(_ sender: NSMenuItem) {
+        guard let link = sender.representedObject as? String, let url = URL(string: link) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// Helm isn't notarized, and legacyScreenSaver won't load a quarantined
@@ -90,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             line += " · synced " + updated.formatted(.relative(presentation: .named))
         }
         statusLine.title = line
+        rebuildWatchItems(in: menu)
+        updateStatusCount()
     }
 
     @objc private func openSettings() {

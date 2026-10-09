@@ -130,6 +130,7 @@ struct SettingsView: View {
         }
         Section("Watched pages") {
             Toggle("Show pages Helm's browser extension is watching", isOn: $engine.settings.showWatches)
+            Toggle("Mac notifications when a watched page changes", isOn: $engine.settings.notifyWatches)
         }
         Section("Clock") {
             Toggle("Show clock", isOn: $engine.settings.showClock)

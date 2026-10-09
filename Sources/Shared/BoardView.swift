@@ -77,10 +77,16 @@ struct BoardView: View {
         }
     }
 
+    /// Needs you first, then anything just finished (celebrating), then the rest.
+    /// Things that finished days ago have left.
     private var watches: [BoardWatch] {
         guard s.showWatches else { return [] }
-        let order: [BoardWatch.State] = [.attention, .pending, .watching, .done]
-        return (board?.watches ?? []).sorted { order.firstIndex(of: $0.state)! < order.firstIndex(of: $1.state)! }
+        func rank(_ w: BoardWatch) -> Int {
+            if w.state == .attention { return 0 }
+            if w.celebrating(now: now) { return 1 }
+            return [BoardWatch.State.pending: 2, .watching: 3, .done: 4][w.state] ?? 3
+        }
+        return (board?.watches ?? []).filter { !$0.stale(now: now) }.sorted { rank($0) < rank($1) }
     }
 
     private var showSide: Bool { s.showReminders || s.showWatches }
@@ -411,8 +417,8 @@ struct BoardView: View {
         }
         // Give way rather than push the board off screen on small displays.
         .frame(minHeight: 0, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
-        .clipped()
         .padding(base * 1.4)
+        .clipped()  // at the panel's edge, so a celebration glow has room
         .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
         .glass(radius: base * 1.1, tint: s.panelOpacity)
     }
@@ -436,17 +442,22 @@ struct BoardView: View {
     }
 
     private func watchRow(_ watch: BoardWatch, base: CGFloat) -> some View {
-        let color: Color = switch watch.state {
+        let celebrating = watch.celebrating(now: now)
+        let stateColor: Color = switch watch.state {
         case .attention: .orange
         case .pending: .yellow
         case .watching: .white.opacity(0.8)
         case .done: accent
         }
-        let icon = watch.state == .done ? "checkmark.circle.fill"
+        let color = celebrating ? Color(red: 1, green: 0.78, blue: 0.3) : stateColor
+        let icon = celebrating ? "party.popper.fill"
+            : watch.state == .done ? "checkmark.circle.fill"
             : watch.state == .attention && watch.kind == "general" ? "exclamationmark.circle.fill"
             : kindSymbol(watch.kind)
         var detail = watch.quoted ? "“\(watch.text)”" : watch.text
-        if let since = watch.since {
+        if let countdown = watch.countdown(now: now) {
+            detail += " · " + countdown  // a live countdown says more than when it last changed
+        } else if let since = watch.finished ?? watch.since {
             detail += " · " + since.formatted(.relative(presentation: .named))
         }
         return HStack(alignment: .firstTextBaseline, spacing: base * 0.7) {
@@ -467,6 +478,18 @@ struct BoardView: View {
                     stepsBar(step: watch.step, of: watch.steps, color: color, base: base)
                         .padding(.top, base * 0.25)
                 }
+            }
+        }
+        .background {
+            if celebrating {
+                // A soft gold glow that breathes, for a few hours after something finishes.
+                let pulse = (sin(now.timeIntervalSince1970 * 1.2) + 1) / 2
+                let gold = Color(red: 1, green: 0.78, blue: 0.3)
+                RoundedRectangle(cornerRadius: base * 0.7, style: .continuous)
+                    .fill(gold.opacity(0.14 + 0.12 * pulse))
+                    .overlay(RoundedRectangle(cornerRadius: base * 0.7, style: .continuous)
+                        .strokeBorder(gold.opacity(0.45 + 0.3 * pulse), lineWidth: 1))
+                    .padding(-base * 0.5)  // around the row, without moving it out of line
             }
         }
     }

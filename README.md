@@ -79,10 +79,31 @@ extension; page text never leaves your browser.
 - Play Console app review: choose *some text disappears* with `Changes in review`.
 - LinkedIn API product: select "Review in progress" and watch for changes.
 
+**Checking at the right pace.** Each watch is checked when it's due: every
+5 minutes when it's one step from done (out for delivery) or due within a few
+hours, at your chosen interval while it's moving, less often when nothing has
+changed for days, and not at all once it's finished (Check now still looks).
+Switching to or reloading a watched page's tab checks it on the spot. The popup
+says when the next check is and why a watch is checked more or less often.
+
+**Watches that repair themselves.** Helm remembers the label next to the status
+you selected. If the site is redesigned and the status moves, Helm finds it
+again by its last text, by sitting just after that label, or by wording that
+fits what it's watching, and carries on. The popup notes "found again after the
+page changed". Only if none of that works does it report "(no longer on the page)".
+
 **On the screensaver.** Watches also appear in the board's Waiting on panel.
 Helm.app registers itself with Brave and Chrome at launch, and the extension
 hands it the watch list (over native messaging, which stays on your Mac)
-whenever something changes. Turn the panel off in Customize → Watched pages.
+whenever something changes. The board shows a live countdown when Helm knows
+when something is due ("in about 3 h", "tomorrow"), celebrates for a few hours
+when something finishes, and drops finished watches after 3 days. Turn the
+panel off in Customize → Watched pages.
+
+**Mac notifications and the menu bar.** Alerts also arrive as Mac notifications
+from Helm (click one to open the page), even when Brave isn't in front; turn
+them off in Customize → Watched pages. Helm's menu bar icon shows how many
+watches need you, and its menu lists them all; choose one to open it.
 
 **Badge.** Green shows how many watches have news for you: an update you haven't
 seen, a problem, or a finished review. Otherwise amber shows how many are still

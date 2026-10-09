@@ -89,6 +89,12 @@ struct BoardWatch: Codable {
     /// How far along its stages it is (step of steps), when that's known.
     var step = 0
     var steps = 0
+    var url: String?
+    /// When it's expected (arrival, deadline); `dueHasTime` if that includes a time of day.
+    var due: Date?
+    var dueHasTime = false
+    /// When it finished, for a short celebration and for dropping it off the board later.
+    var finished: Date?
 
     init(name: String, text: String, quoted: Bool = false, state: State, since: Date? = nil, checked: Date? = nil,
          kind: String = "general", step: Int = 0, steps: Int = 0) {
@@ -107,6 +113,43 @@ struct BoardWatch: Codable {
         kind = try c.decodeIfPresent(String.self, forKey: .kind) ?? "general"
         step = try c.decodeIfPresent(Int.self, forKey: .step) ?? 0
         steps = try c.decodeIfPresent(Int.self, forKey: .steps) ?? 0
+        url = try c.decodeIfPresent(String.self, forKey: .url)
+        due = try c.decodeIfPresent(Date.self, forKey: .due)
+        dueHasTime = try c.decodeIfPresent(Bool.self, forKey: .dueHasTime) ?? false
+        finished = try c.decodeIfPresent(Date.self, forKey: .finished)
+    }
+
+    static func emoji(_ kind: String) -> String {
+        ["delivery": "📦", "appReview": "📱", "access": "🔑", "government": "🛂", "job": "💼", "results": "🎓",
+         "booking": "🎫", "refund": "💸", "ticket": "🎟️", "build": "🛠️", "product": "🏷️"][kind] ?? "👀"
+    }
+
+    /// Finished in the last few hours: worth celebrating on the board.
+    func celebrating(now: Date) -> Bool {
+        state == .done && finished.map { now.timeIntervalSince($0) < 6 * 3600 } == true
+    }
+
+    /// Finished long enough ago to leave the board.
+    func stale(now: Date) -> Bool {
+        state == .done && now.timeIntervalSince(finished ?? since ?? now) > 3 * 86400
+    }
+
+    /// "in 25 min", "in about 3 h", "today", "tomorrow", "on Thursday", "in 9 days", "running late".
+    func countdown(now: Date) -> String? {
+        guard let due, state != .done else { return nil }
+        let cal = Calendar.current
+        let seconds = due.timeIntervalSince(now)
+        if dueHasTime {
+            if seconds < -15 * 60 { return "running late" }
+            if seconds < 60 * 60 { return "in \(max(1, Int(seconds / 60))) min" }
+            if seconds < 12 * 3600 { return "in about \(Int((seconds / 3600).rounded())) h" }
+        }
+        if cal.isDateInToday(due) { return "today" }
+        if cal.isDateInTomorrow(due) { return "tomorrow" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: now), to: cal.startOfDay(for: due)).day ?? 0
+        if days < 0 { return "was due \(due.formatted(.dateTime.weekday(.wide)))" }
+        if days < 7 { return "on \(due.formatted(.dateTime.weekday(.wide)))" }
+        return "in \(days) days"
     }
 
     /// Where the extension's latest watches are kept for Helm.app to read.
@@ -171,6 +214,7 @@ struct HelmSettings: Codable, Equatable {
     var showClock = true
     var use24Hour = false
     var showWatches = true
+    var notifyWatches = true
 
     // Appearance
     var accentHex = "#34C759"
@@ -210,6 +254,7 @@ struct HelmSettings: Codable, Equatable {
         showClock = v(.showClock, d.showClock)
         use24Hour = v(.use24Hour, d.use24Hour)
         showWatches = v(.showWatches, d.showWatches)
+        notifyWatches = v(.notifyWatches, d.notifyWatches)
         accentHex = v(.accentHex, d.accentHex)
         fontDesign = v(.fontDesign, d.fontDesign)
         textScale = v(.textScale, d.textScale)
