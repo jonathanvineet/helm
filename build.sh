@@ -17,6 +17,23 @@ APP=build/Helm.app
 IDENTITY="${SIGN_IDENTITY:-Helm Local Signing}"
 [[ "$IDENTITY" == "-" ]] || security find-identity -p codesigning | grep -q "$IDENTITY" || IDENTITY="-"
 
+# Prepare standalone OCR runtimes before replacing a working app. Universal
+# releases combine helpers built on each architecture; a thin Homebrew runtime
+# cannot be cross-compiled by lipo.
+OCR_PYTHON="${OCR_BUILD_PYTHON:-api/.venv/bin/python}"
+OCR_ROOT="${OCR_BUNDLE_DIR:-build/ocr}"
+if [[ ! -x "$OCR_PYTHON" ]]; then
+    echo "Create api/.venv and install api/requirements-build.txt first (see api/README.md)." >&2
+    exit 1
+fi
+for arch in $ARCHS; do
+    if [[ -n "${OCR_BUNDLE_DIR:-}" ]]; then
+        "$OCR_PYTHON" api/build_bundle.py --arch "$arch" --verify "$OCR_ROOT/$arch/helm-ocr.app"
+    else
+        "$OCR_PYTHON" api/build_bundle.py --arch "$arch"
+    fi
+done
+
 # swiftc once per architecture, then lipo the slices together.
 compile() {
     local out=$1; shift
@@ -52,7 +69,12 @@ ICONSET=build/AppIcon.iconset
 rm -rf "$ICONSET"
 "$APP/Contents/MacOS/Helm" --write-iconset "$ICONSET"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
-codesign --force --sign "$IDENTITY" "$APP" 2>&1 | grep -v "replacing existing signature" || true
+for arch in $ARCHS; do
+    mkdir -p "$APP/Contents/Helpers/OCR/$arch"
+    cp -R "$OCR_ROOT/$arch/helm-ocr.app" "$APP/Contents/Helpers/OCR/$arch/"
+done
+codesign --force --deep --sign "$IDENTITY" "$APP"
+codesign --verify --deep --strict "$APP"
 echo "built $APP (signed: $IDENTITY)"
 
 # Preview tool

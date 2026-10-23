@@ -16,7 +16,7 @@ for plist in Resources/App-Info.plist Resources/Saver-Info.plist; do
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$plist"
 done
 
-ARCHS="arm64 x86_64" SIGN_IDENTITY=- ./build.sh
+OCR_MAX_MACOS=14.0 ARCHS="arm64 x86_64" SIGN_IDENTITY=- ./build.sh
 
 STAGE=dist/stage
 ZIP=dist/Helm-$VERSION.zip

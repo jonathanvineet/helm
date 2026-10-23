@@ -23,9 +23,26 @@ Helm isn't notarized yet, so the cask clears macOS's download quarantine flag fr
 
 ## Build from source
 
+Build dependencies (end users do not need these):
+
+```sh
+brew install tesseract
+python3 -m venv api/.venv
+api/.venv/bin/python -m pip install -r api/requirements-build.txt
+```
+
 ```sh
 ./build.sh --install
 ```
+
+## Print quotations
+
+Choose **Print Quote…** from Helm's menu bar to choose, paste, or capture a Creality Print
+estimate screenshot, review OCR readings, and calculate an INR quote with editable
+rates. Capture Screen hides Helm while you select the estimate area or window.
+Python and Tesseract are bundled inside Helm; no terminal, server, or separate
+installation is needed. Images stay on your Mac. See [`api/README.md`](api/README.md)
+for the developer API, packaging, and tests.
 
 ## Watching pages
 

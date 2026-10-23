@@ -5,3 +5,6 @@ test-results/
 playwright-report/
 extension.crx
 extension.pem
+.venv/
+__pycache__/
+*.pyc

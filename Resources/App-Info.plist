@@ -22,6 +22,8 @@
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Helm reads the notes in your Helm folder so the screensaver can show them.</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Helm captures the print estimate you select so it can read filament weight and print time.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>Helm reads your reminders so the screensaver can show what's done and what's left.</string>
 	<key>NSRemindersUsageDescription</key>

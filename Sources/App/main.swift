@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private var statusItem: NSStatusItem!
     private var statusLine: NSMenuItem!
     private var settingsWindow: NSWindow?
+    private var quoteWindow: NSWindow?
     private lazy var alerts = WatchAlerts(engine: engine)
     private var watchItems: [NSMenuItem] = []
     private var boardObserver: AnyCancellable?
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         statusLine.isEnabled = false
         menu.addItem(.separator())
         menu.addItem(withTitle: "Customize…", action: #selector(openSettings), keyEquivalent: ",")
+        menu.addItem(withTitle: "Print Quote…", action: #selector(openPrintQuote), keyEquivalent: "p")
         menu.addItem(withTitle: "Sync Now", action: #selector(syncNow), keyEquivalent: "r")
         menu.addItem(withTitle: "Start Screensaver", action: #selector(startScreensaver), keyEquivalent: "s")
         menu.addItem(withTitle: "Open Notes", action: #selector(openNotes), keyEquivalent: "")
@@ -66,6 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     // MARK: Watched pages in the menu bar
+
+    func applicationWillTerminate(_ notification: Notification) {
+        QuoteHelper.shared.stop()
+        QuoteScreenCapture.shared.stop()
+    }
 
     private func updateStatusCount() {
         let count = BoardWatch.load().filter { $0.state == .attention }.count
@@ -167,8 +174,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
+    @objc private func openPrintQuote() {
+        if quoteWindow == nil {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 700, height: 820),
+                                  styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                                  backing: .buffered, defer: false)
+            window.title = "Helm — Print Quote"
+            window.isReleasedWhenClosed = false
+            window.contentView = NSHostingView(rootView: PrintQuoteView())
+            window.center()
+            window.delegate = self
+            quoteWindow = window
+        }
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        quoteWindow?.makeKeyAndOrderFront(nil)
+    }
+
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        let closing = notification.object as? NSWindow
+        if ![settingsWindow, quoteWindow].compactMap({ $0 }).contains(where: { $0 !== closing && ($0.isVisible || $0.isMiniaturized) }) {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     @objc private func syncNow() { engine.syncNow() }
