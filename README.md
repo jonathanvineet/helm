@@ -169,7 +169,8 @@ The Release workflow (`.github/workflows/release.yml`) builds the OCR helper on
 Apple silicon and Intel runners, runs `release.sh`, publishes
 `Helm-0.4.0.zip` to a GitHub release, and updates `Casks/helm.rb` in
 [jonathanvineet/homebrew-tap](https://github.com/jonathanvineet/homebrew-tap)
-(set a `TAP_TOKEN` secret that can push to the tap).
+(set a `TAP_DEPLOY_KEY` secret: the private half of a deploy key with write
+access on the tap).
 
 Installed copies pick it up from **Check for Updates…** in the menu bar. Helm
 also checks once a day and shows "Update to Helm 0.4.0…" when one is out. It
