@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     private let engine = SyncEngine()
     private var statusItem: NSStatusItem!
     private var statusLine: NSMenuItem!
+    private var updateItem: NSMenuItem!
     private var settingsWindow: NSWindow?
     private var quoteWindow: NSWindow?
     private lazy var alerts = WatchAlerts(engine: engine)
@@ -46,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(withTitle: "Start Screensaver", action: #selector(startScreensaver), keyEquivalent: "s")
         menu.addItem(withTitle: "Open Notes", action: #selector(openNotes), keyEquivalent: "")
         menu.addItem(.separator())
+        updateItem = menu.addItem(withTitle: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         menu.addItem(withTitle: "Quit Helm", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         for item in menu.items where item.action != nil && item.action != #selector(NSApplication.terminate(_:)) {
             item.target = self
@@ -64,6 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             MainActor.assumeIsolated { self?.updateStatusCount() }
         }
         unquarantineSaver()
+        Updater.shared.onChange = { [weak self] in self?.updateUpdateItem() }
+        Updater.shared.start()
         firstLaunch()
     }
 
@@ -199,6 +203,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     @objc private func syncNow() { engine.syncNow() }
+
+    @objc private func checkForUpdates() {
+        Task { await Updater.shared.check(interactive: true) }
+    }
+
+    private func updateUpdateItem() {
+        let updater = Updater.shared
+        updateItem.isEnabled = !updater.installing
+        updateItem.title = updater.installing ? "Installing Update…"
+            : updater.available.map { "Update to Helm \($0.version)…" } ?? "Check for Updates…"
+    }
 
     @objc private func startScreensaver() {
         NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Library/CoreServices/ScreenSaverEngine.app"),

@@ -159,10 +159,22 @@ Pass a photo path instead of `""` to render over a photo.
 
 ## Release
 
+Push a version tag:
+
 ```sh
-./release.sh 0.3.0
+git tag v0.4.0 && git push origin v0.4.0
 ```
 
-This writes `dist/Helm-0.3.0.zip` and `dist/helm.rb`. Upload the zip to a GitHub
-release tagged `v0.3.0`, then copy `helm.rb` to `Casks/helm.rb` in
-[jonathanvineet/homebrew-tap](https://github.com/jonathanvineet/homebrew-tap).
+The Release workflow (`.github/workflows/release.yml`) builds the OCR helper on
+Apple silicon and Intel runners, runs `release.sh`, publishes
+`Helm-0.4.0.zip` to a GitHub release, and updates `Casks/helm.rb` in
+[jonathanvineet/homebrew-tap](https://github.com/jonathanvineet/homebrew-tap)
+(set a `TAP_TOKEN` secret that can push to the tap).
+
+Installed copies pick it up from **Check for Updates…** in the menu bar. Helm
+also checks once a day and shows "Update to Helm 0.4.0…" when one is out. It
+verifies the download against GitHub's checksum, replaces Helm.app and
+Helm.saver in place, and relaunches.
+
+To package by hand instead, `./release.sh 0.4.0` writes `dist/Helm-0.4.0.zip`
+and `dist/helm.rb`.

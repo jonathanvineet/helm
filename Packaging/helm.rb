@@ -9,6 +9,8 @@ cask "helm" do
   homepage "https://github.com/@REPO@"
 
   depends_on macos: :sonoma
+  # Helm updates itself from GitHub releases; brew upgrade leaves it alone.
+  auto_updates true
 
   app "Helm.app"
   screen_saver "Helm.saver"
