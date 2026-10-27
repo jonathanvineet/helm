@@ -14,6 +14,8 @@ on:
 jobs:
   ocr:
     strategy:
+      # Let both architectures finish so one run shows every failure.
+      fail-fast: false
       matrix:
         include:
           - arch: arm64
@@ -28,11 +30,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: brew install tesseract
+      # Homebrew's tesseract targets the runner's macOS, newer than Helm's 14.0.
+      - uses: actions/cache@v4
+        id: tesseract
+        with:
+          path: build/tesseract
+          key: tesseract-${{ matrix.arch }}-${{ hashFiles('api/build_tesseract.sh') }}
+      - if: steps.tesseract.outputs.cache-hit != 'true'
+        run: api/build_tesseract.sh build/tesseract
       - run: |
           python -m venv api/.venv
           api/.venv/bin/python -m pip install -r api/requirements-build.txt
       - run: api/.venv/bin/python api/build_bundle.py --arch ${{ matrix.arch }}
+        env:
+          TESSERACT_CMD: build/tesseract/bin/tesseract
+          TESSDATA_PREFIX: build/tesseract/share/tessdata
       # Tar first: artifact uploads drop the symlinks and permissions the app needs.
       - run: tar -czf ocr-${{ matrix.arch }}.tgz -C build/ocr/${{ matrix.arch }} helm-ocr.app
       - uses: actions/upload-artifact@v4

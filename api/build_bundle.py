@@ -133,6 +133,10 @@ app = BUNDLE(coll, name='helm-ocr.app',
         source = tesseract.parent.parent / name
         if source.is_file():
             shutil.copy2(source, licenses / f"tesseract-{name}")
+    # api/build_tesseract.sh links its libraries statically and keeps their notices here.
+    static_notices = tesseract.parent.parent / "share/licenses"
+    if static_notices.is_dir():
+        shutil.copytree(static_notices, licenses / "native", dirs_exist_ok=True)
     # PyInstaller records source paths for every collected native dependency.
     # Preserve the Homebrew inventory and its bundled notices without relying on
     # the developer's Homebrew installation at runtime.

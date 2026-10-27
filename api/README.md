@@ -61,7 +61,9 @@ dependencies that still reference the build machine's Python/Homebrew paths.
 Native libraries must also support the oldest target macOS version. Recent
 Homebrew bottles may target a newer macOS than Helm's macOS 14 minimum. Use a
 macOS 14 build environment or explicitly build native dependencies for macOS 14
-before shipping. `release.sh` enforces `OCR_MAX_MACOS=14.0` and fails early if a
+before shipping. CI does this with `api/build_tesseract.sh <prefix>`, which builds a
+static, PNG-only Tesseract for macOS 14.0; pass `TESSERACT_CMD=<prefix>/bin/tesseract`
+and `TESSDATA_PREFIX=<prefix>/share/tessdata` to `build_bundle.py`. `release.sh` enforces `OCR_MAX_MACOS=14.0` and fails early if a
 bundled library needs a newer OS. Local development builds use your installed
 libraries without that release constraint. Test on the oldest supported OS before
 publishing; do not lower a library's deployment metadata to bypass this check.
