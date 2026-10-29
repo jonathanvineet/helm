@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import sysconfig
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -79,7 +80,7 @@ def main():
     tesseract = Path(os.environ.get("TESSERACT_CMD") or shutil.which("tesseract") or "/opt/homebrew/bin/tesseract").resolve()
     if not tesseract.is_file():
         raise SystemExit("Build dependency missing: brew install tesseract (end users do not need Homebrew).")
-    tessdata = Path(os.environ.get("TESSDATA_PREFIX", str(tesseract.parent.parent / "share/tessdata")))
+    tessdata = Path(os.environ.get("TESSDATA_PREFIX", str(tesseract.parent.parent / "share/tessdata"))).resolve()
     english = tessdata / "eng.traineddata"
     if not english.is_file():
         raise SystemExit(f"English OCR data missing: {english}")
@@ -161,6 +162,7 @@ app = BUNDLE(coll, name='helm-ocr.app',
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(notice, dest)
     python_licenses = [Path(sys.base_prefix) / "LICENSE.txt",
+                       Path(sysconfig.get_path("stdlib")) / "LICENSE.txt",
                        Path(sys.base_prefix) / "Resources/English.lproj/Documentation/_sources/license.rst.txt"]
     for python_license in python_licenses:
         if python_license.is_file():
